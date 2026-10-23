@@ -14,6 +14,7 @@ import com.facebook.react.ReactInstanceManager;
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ReactContext;
 import com.facebook.react.jstasks.HeadlessJsTaskConfig;
+import com.guichaguri.trackplayer.module.MusicEvents;
 
 import javax.annotation.Nullable;
 
@@ -22,6 +23,11 @@ import javax.annotation.Nullable;
  */
 @UnstableApi
 public class MusicService extends HeadlessJsTaskService {
+
+    /**
+     * Custom action: toggle desktop lyric (lx-music fork)
+     */
+    public static final String ACTION_TOGGLE_DESKTOP_LYRIC = "com.guichaguri.trackplayer.toggle_desktop_lyric";
 
     MusicManager manager;
     Handler handler;
@@ -102,6 +108,11 @@ public class MusicService extends HeadlessJsTaskService {
                 MediaButtonReceiver.handleIntent(manager.getMetadata().getSession(), intent);
             }
 
+            return START_NOT_STICKY;
+        }
+
+        if(intent != null && ACTION_TOGGLE_DESKTOP_LYRIC.equals(intent.getAction())) {
+            emit(MusicEvents.BUTTON_TOGGLE_DESKTOP_LYRIC, null);
             return START_NOT_STICKY;
         }
 

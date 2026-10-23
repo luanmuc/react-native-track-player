@@ -29,6 +29,9 @@ public class MusicEvents extends BroadcastReceiver {
     public static final String BUTTON_JUMP_BACKWARD = "remote-jump-backward";
     public static final String BUTTON_DUCK = "remote-duck";
 
+    // Custom: toggle desktop lyric (lx-music fork)
+    public static final String BUTTON_TOGGLE_DESKTOP_LYRIC = "remote-toggle-desktop-lyric";
+
     // Playback Events
     public static final String PLAYBACK_STATE = "playback-state";
     public static final String PLAYBACK_TRACK_CHANGED = "playback-track-changed";
