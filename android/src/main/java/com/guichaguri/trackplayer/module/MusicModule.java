@@ -64,6 +64,24 @@ public class MusicModule extends ReactContextBaseJavaModule implements ServiceCo
         return "TrackPlayerModule";
     }
 
+
+    @ReactMethod
+    public void getAudioSessionId(final Promise promise) {
+        try {
+            if (binder == null) {
+                promise.reject("E_SERVICE_NOT_CONNECTED", "TrackPlayer service not connected");
+                return;
+            }
+            ExoPlayback<?> playback = binder.getPlayback();
+            if (playback == null || playback.getPlayer() == null) {
+                promise.resolve(-1);
+                return;
+            }
+            promise.resolve(playback.getPlayer().getAudioSessionId());
+        } catch (Exception e) {
+            promise.reject("E_GET_SESSION_FAILED", e.getMessage());
+        }
+    }
     @Override
     public void initialize() {
         ReactContext context = getReactApplicationContext();
