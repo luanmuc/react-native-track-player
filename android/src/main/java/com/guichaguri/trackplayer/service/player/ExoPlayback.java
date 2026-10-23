@@ -76,6 +76,10 @@ public abstract class ExoPlayback<T extends Player> implements Player.Listener, 
         return queue;
     }
 
+    public T getPlayer() {
+        return player;
+    }
+
     public abstract void add(Track track, int index, Promise promise);
 
     public abstract void add(Collection<Track> tracks, int index, Promise promise);
