@@ -29,6 +29,7 @@ import com.guichaguri.trackplayer.service.MusicService;
 import com.guichaguri.trackplayer.service.Utils;
 import com.guichaguri.trackplayer.service.models.NowPlayingMetadata;
 import com.guichaguri.trackplayer.service.models.Track;
+import androidx.media3.exoplayer.ExoPlayer;
 import com.guichaguri.trackplayer.service.player.ExoPlayback;
 
 import java.util.ArrayDeque;
@@ -77,7 +78,12 @@ public class MusicModule extends ReactContextBaseJavaModule implements ServiceCo
                 promise.resolve(-1);
                 return;
             }
-            promise.resolve(playback.getPlayer().getAudioSessionId());
+            if (playback.getPlayer() instanceof ExoPlayer) {
+                // getAudioSessionId 定义在 ExoPlayer 接口上，而非 Player
+                promise.resolve(((ExoPlayer) playback.getPlayer()).getAudioSessionId());
+            } else {
+                promise.resolve(-1);
+            }
         } catch (Exception e) {
             promise.reject("E_GET_SESSION_FAILED", e.getMessage());
         }
