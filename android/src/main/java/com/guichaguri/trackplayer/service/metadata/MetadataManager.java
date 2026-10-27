@@ -300,14 +300,13 @@ public class MetadataManager {
             addAction(playAction, PlaybackStateCompat.ACTION_PLAY, compact);
         }
 
-        addAction(stopAction, PlaybackStateCompat.ACTION_STOP, compact);
         addAction(forwardAction, PlaybackStateCompat.ACTION_FAST_FORWARD, compact);
         addAction(nextAction, PlaybackStateCompat.ACTION_SKIP_TO_NEXT, compact);
 
         // Custom: toggle desktop lyric button (lx-music fork)
         builder.mActions.add(new Action(
             R.drawable.lyric,
-            "桌面歌词",
+            "词",
             PendingIntent.getService(service, 200,
                 new Intent(service, MusicService.class)
                     .setAction(MusicService.ACTION_TOGGLE_DESKTOP_LYRIC),
