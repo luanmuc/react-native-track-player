@@ -51,6 +51,10 @@ public class MusicManager {
 
     // lx-music fork: 音频焦点精细处理
     private AudioManager audioManager;
+    // 是否启用焦点处理（读 setupPlayer 的 handleAudioFocus 选项，默认开）
+    // 注意：无论开关如何，media3 内置 AudioFocusManager 都必须关闭（见 setAudioAttributes 处），
+    // 否则两套管理器会互相下发 LOSS，把刚开始的播放打断（b53 点播放一直缓冲的直接原因）
+    private boolean handleAudioFocus = true;
     private boolean hasAudioFocus = false;
     private boolean wasDucking = false;
     private boolean wasPlayingBeforeTransientLoss = false;
@@ -58,7 +62,7 @@ public class MusicManager {
     private final float duckVolume = 0.2f;
 
     private final AudioManager.OnAudioFocusChangeListener audioFocusListener = focusChange -> {
-        if (playback == null) return;
+        if (playback == null || !handleAudioFocus) return;
         switch (focusChange) {
             case AudioManager.AUDIOFOCUS_GAIN:
                 // 重新获得焦点：恢复音量 + 恢复播放
@@ -140,6 +144,7 @@ public class MusicManager {
 
     // lx-music fork: 音频焦点请求/释放
     private void requestAudioFocus() {
+        if (!handleAudioFocus) return; // 用户关掉「音频焦点处理」时完全不接管
         // 已有焦点时直接返回（v1.9.2-b54）：旧实现每次 onPlay 都重复请求，
         // 焦点栈累积会触发系统下发 LOSS，配合下面的 stop() 会把刚开始的播放打断，
         // 表现为「点播放一直卡在加载态」
@@ -153,6 +158,7 @@ public class MusicManager {
     }
 
     private void abandonAudioFocus() {
+        if (!handleAudioFocus) return;
         if (hasAudioFocus) {
             audioManager.abandonAudioFocus(audioFocusListener);
             hasAudioFocus = false;
@@ -195,6 +201,7 @@ public class MusicManager {
     public LocalPlayback createLocalPlayback(Bundle options) {
         boolean autoUpdateMetadata = options.getBoolean("autoUpdateMetadata", true);
         boolean shouldHandleAudioFocus = options.getBoolean("handleAudioFocus", true);
+        this.handleAudioFocus = shouldHandleAudioFocus; // lx-music fork: 手动焦点实现按此开关启停
         boolean shouldEnableAudioOffload = options.getBoolean("audioOffload", true);
         int minBuffer = (int)Utils.toMillis(options.getDouble("minBuffer", Utils.toSeconds(DEFAULT_MIN_BUFFER_MS)));
         int maxBuffer = (int)Utils.toMillis(options.getDouble("maxBuffer", Utils.toSeconds(DEFAULT_MAX_BUFFER_MS)));
@@ -240,7 +247,9 @@ public class MusicManager {
         // player.addAnalyticsListener(new EventLogger(null));
 
         player.setAudioAttributes(new androidx.media3.common.AudioAttributes.Builder()
-                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).setUsage(C.USAGE_MEDIA).build(), shouldHandleAudioFocus);
+                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).setUsage(C.USAGE_MEDIA).build(), false);
+        // lx-music fork: 上面恒传 false——焦点统一由本类 requestAudioFocus/audioFocusListener 管理，
+        // 避免 media3 内置 AudioFocusManager 与手动实现双重持有焦点、互相触发 LOSS 打断播放
 
         return new LocalPlayback(service, this, player, cacheMaxSize, autoUpdateMetadata);
     }
