@@ -84,17 +84,17 @@ public abstract class TrackMetadata {
     public MediaMetadataCompat.Builder toMediaMetadata() {
         MediaMetadataCompat.Builder builder = new MediaMetadataCompat.Builder();
 
-        // 标题拼接音质标签：晴天 [FLAC]（title 为空时不拼，避免出现 "null [FLAC]"）
-        String displayTitle = title;
-        if (title != null && !title.isEmpty() && quality != null && !quality.isEmpty()) {
-            displayTitle = title + " [" + quality + "]";
-        }
-        builder.putString(METADATA_KEY_TITLE, displayTitle);
+        // 标题保持歌名本身，不再挂音质标签（标题：黄昏）
+        builder.putString(METADATA_KEY_TITLE, title);
 
-        // 艺术家行拼接音源：周杰伦 · helloworld(kw)（artist 为空时不拼）
+        // 艺术家行依次拼接音源与音质：周传雄 · 树音 · FLAC
+        // artist 为空时不拼；音源/音质缺哪项就自动跳过，不会出现连续的分隔符
         String displayArtist = artist;
-        if (artist != null && !artist.isEmpty() && subSource != null && !subSource.isEmpty()) {
-            displayArtist = artist + " · " + subSource;
+        if (artist != null && !artist.isEmpty()) {
+            StringBuilder sb = new StringBuilder(artist);
+            if (subSource != null && !subSource.isEmpty()) sb.append(" · ").append(subSource);
+            if (quality != null && !quality.isEmpty()) sb.append(" · ").append(quality);
+            displayArtist = sb.toString();
         }
         builder.putString(METADATA_KEY_ARTIST, displayArtist);
         builder.putString(METADATA_KEY_ALBUM, album);
