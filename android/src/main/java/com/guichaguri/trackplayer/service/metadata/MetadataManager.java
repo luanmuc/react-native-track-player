@@ -347,7 +347,8 @@ public class MetadataManager {
             PendingIntent.getService(service, 200,
                 new Intent(service, MusicService.class)
                     .setAction(MusicService.ACTION_TOGGLE_DESKTOP_LYRIC),
-                PendingIntent.FLAG_UPDATE_CURRENT)
+                PendingIntent.FLAG_UPDATE_CURRENT
+                    | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0))
         ));
 
         // Custom: playback repeat mode button (lx-music fork)
@@ -364,7 +365,8 @@ public class MetadataManager {
             PendingIntent.getService(service, 201,
                 new Intent(service, MusicService.class)
                     .setAction(MusicService.ACTION_CYCLE_REPEAT),
-                PendingIntent.FLAG_UPDATE_CURRENT)
+                PendingIntent.FLAG_UPDATE_CURRENT
+                    | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0))
         ));
 
         // Prevent the media style from being used in older Huawei devices that don't support custom styles
