@@ -27,6 +27,7 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationCompat.Action;
 import androidx.media.app.NotificationCompat.MediaStyle;
 import androidx.media.session.MediaButtonReceiver;
+import androidx.palette.graphics.Palette;
 import androidx.media3.common.util.UnstableApi;
 
 import com.bumptech.glide.Glide;
@@ -67,6 +68,9 @@ public class MetadataManager {
     private Bitmap prevArtResource = null;
 
     private Action previousAction, rewindAction, playAction, pauseAction, stopAction, forwardAction, nextAction;
+
+    // 桌面歌词按钮状态（lx-music fork）
+    private boolean lyricButtonActive = false;
 
     @SuppressLint("UnspecifiedImmutableFlag")
     public MetadataManager(MusicService service, MusicManager manager) {
@@ -204,6 +208,18 @@ public class MetadataManager {
         metadata.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap);
         builder.setLargeIcon(bitmap);
 
+        // lx-music fork: 通知栏颜色跟随专辑封面主色
+        try {
+            Palette palette = Palette.from(bitmap).generate();
+            int color = palette.getDarkVibrantColor(
+                palette.getVibrantColor(NotificationCompat.COLOR_DEFAULT));
+            if (color != NotificationCompat.COLOR_DEFAULT) {
+                builder.setColor(color);
+            }
+        } catch (Exception e) {
+            // 提取失败时保持默认颜色
+        }
+
         session.setMetadata(metadata.build());
         updateNotification();
     }
@@ -227,6 +243,15 @@ public class MetadataManager {
     }
 
     /**
+     * 更新桌面歌词按钮状态（lx-music fork）
+     * @param active true=高亮（歌词开），false=置灰（歌词关）
+     */
+    public void setLyricButtonActive(boolean active) {
+      this.lyricButtonActive = active;
+      updatePlayback(manager.getPlayback(), manager.getPlayback().getState() == 3);
+    }
+
+    /**
      * Updates the current track
      * @param track The new track
      */
@@ -239,8 +264,11 @@ public class MetadataManager {
 
         if(track.artwork == null) {
             prevArtwork = null;
-            prevArtResource = null;
-            builder.setLargeIcon((Bitmap) null);
+            // lx-music fork: 无封面时显示默认占位图
+            prevArtResource = android.graphics.BitmapFactory.decodeResource(
+                service.getResources(), R.drawable.default_artwork);
+            builder.setLargeIcon(prevArtResource);
+            metadata.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, prevArtResource);
         } else if (track.artwork.equals(prevArtwork) && prevArtResource != null) {
             metadata.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, prevArtResource);
             builder.setLargeIcon(prevArtResource);
@@ -304,8 +332,9 @@ public class MetadataManager {
         addAction(nextAction, PlaybackStateCompat.ACTION_SKIP_TO_NEXT, compact);
 
         // Custom: toggle desktop lyric button (lx-music fork)
+        int lyricIcon = lyricButtonActive ? R.drawable.lyric : R.drawable.lyric_inactive;
         builder.mActions.add(new Action(
-            R.drawable.lyric,
+            lyricIcon,
             "词",
             PendingIntent.getService(service, 200,
                 new Intent(service, MusicService.class)

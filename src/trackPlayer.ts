@@ -156,6 +156,10 @@ async function updateNowPlayingTitles(titles: NowPlayingTitles): Promise<void> {
   return TrackPlayer.updateNowPlayingTitles(titles)
 }
 
+async function setLyricButtonActive(active: boolean): Promise<void> {
+  return TrackPlayer.setLyricButtonActive(active)
+}
+
 // MARK: - Player API
 
 async function reset(): Promise<void> {
@@ -283,6 +287,7 @@ export default {
   clearNowPlayingMetadata,
   updateNowPlayingMetadata,
   updateNowPlayingTitles,
+  setLyricButtonActive,
 
   // MARK: - Player API
   reset,

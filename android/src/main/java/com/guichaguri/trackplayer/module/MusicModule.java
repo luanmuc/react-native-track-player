@@ -321,6 +321,14 @@ public class MusicModule extends ReactContextBaseJavaModule implements ServiceCo
     }
 
     @ReactMethod
+    public void setLyricButtonActive(final boolean active, final Promise callback) {
+      waitForConnection(() -> {
+        binder.setLyricButtonActive(active);
+        callback.resolve(null);
+      });
+    }
+
+    @ReactMethod
     public void removeUpcomingTracks(final Promise callback) {
         waitForConnection(() -> {
             binder.getPlayback().removeUpcomingTracks();

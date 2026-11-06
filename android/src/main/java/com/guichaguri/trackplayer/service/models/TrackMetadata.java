@@ -30,6 +30,8 @@ public abstract class TrackMetadata {
     public String genre;
     public long duration;
     public String lyric;
+    public String quality;
+    public String subSource;
 
     public RatingCompat rating;
 
@@ -66,6 +68,14 @@ public abstract class TrackMetadata {
         lyric = bundle.getString("lyric");
       }
 
+      if (bundle.containsKey("quality")) {
+        quality = bundle.getString("quality");
+      }
+
+      if (bundle.containsKey("subSource")) {
+        subSource = bundle.getString("subSource");
+      }
+
       if (bundle.containsKey("rating")) {
         rating = Utils.getRating(bundle, "rating", ratingType);
       }
@@ -74,8 +84,19 @@ public abstract class TrackMetadata {
     public MediaMetadataCompat.Builder toMediaMetadata() {
         MediaMetadataCompat.Builder builder = new MediaMetadataCompat.Builder();
 
-        builder.putString(METADATA_KEY_TITLE, title);
-        builder.putString(METADATA_KEY_ARTIST, artist);
+        // 标题拼接音质标签：晴天 [FLAC]
+        String displayTitle = title;
+        if (quality != null && !quality.isEmpty()) {
+            displayTitle = title + " [" + quality + "]";
+        }
+        builder.putString(METADATA_KEY_TITLE, displayTitle);
+
+        // 艺术家行拼接音源：周杰伦 · helloworld(kw)
+        String displayArtist = artist;
+        if (subSource != null && !subSource.isEmpty()) {
+            displayArtist = artist + " · " + subSource;
+        }
+        builder.putString(METADATA_KEY_ARTIST, displayArtist);
         builder.putString(METADATA_KEY_ALBUM, album);
         builder.putString(METADATA_KEY_DATE, date);
         builder.putString(METADATA_KEY_GENRE, genre);

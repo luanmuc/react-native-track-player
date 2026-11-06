@@ -49,14 +49,55 @@ public class MusicManager {
     private final MetadataManager metadata;
     private ExoPlayback playback;
 
-    // @RequiresApi(26)
-    // private AudioFocusRequest focus = null;
-    // private boolean hasAudioFocus = false;
-    // private boolean wasDucking = false;
+    // lx-music fork: 音频焦点精细处理
+    private AudioManager audioManager;
+    private boolean hasAudioFocus = false;
+    private boolean wasDucking = false;
+    private boolean wasPlayingBeforeTransientLoss = false;
+    private final float normalVolume = 1.0f;
+    private final float duckVolume = 0.2f;
+
+    private final AudioManager.OnAudioFocusChangeListener audioFocusListener = focusChange -> {
+        if (playback == null) return;
+        switch (focusChange) {
+            case AudioManager.AUDIOFOCUS_GAIN:
+                // 重新获得焦点：恢复音量 + 恢复播放
+                if (wasDucking) {
+                    playback.setVolume(normalVolume);
+                    wasDucking = false;
+                }
+                if (wasPlayingBeforeTransientLoss) {
+                    wasPlayingBeforeTransientLoss = false;
+                    new Handler().postDelayed(() -> {
+                        if (playback != null && hasAudioFocus) playback.play();
+                    }, 500); // 延迟 500ms 恢复，避免通话刚结束还在听筒状态
+                }
+                break;
+            case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
+                // 短暂丢失（来电/其他 App 临时播放）：暂停播放，记录状态
+                wasPlayingBeforeTransientLoss = playback.getState() == 3; // STATE_PLAYING = 3
+                playback.pause();
+                break;
+            case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK:
+                // 可压低（导航播报等）：降音量到 20%
+                wasDucking = true;
+                playback.setVolume(duckVolume);
+                break;
+            case AudioManager.AUDIOFOCUS_LOSS:
+                // 永久丢失：停止播放，释放焦点
+                abandonAudioFocus();
+                playback.stop();
+                break;
+        }
+    };
 
     private final BroadcastReceiver noisyReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
+            // lx-music fork: 耳机拔线直接暂停，不依赖 JS 响应
+            if (playback != null) {
+                playback.pause();
+            }
             service.emit(MusicEvents.BUTTON_PAUSE, null);
         }
     };
@@ -70,6 +111,7 @@ public class MusicManager {
     public MusicManager(MusicService service) {
         this.service = service;
         this.metadata = new MetadataManager(service, this);
+        this.audioManager = (AudioManager) service.getSystemService(Context.AUDIO_SERVICE);
 
         PowerManager powerManager = (PowerManager)service.getSystemService(Context.POWER_SERVICE);
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "track-player-wake-lock");
@@ -85,6 +127,23 @@ public class MusicManager {
 
     public ExoPlayback getPlayback() {
         return playback;
+    }
+
+    // lx-music fork: 音频焦点请求/释放
+    private void requestAudioFocus() {
+        int result = audioManager.requestAudioFocus(
+            audioFocusListener,
+            AudioManager.STREAM_MUSIC,
+            AudioManager.AUDIOFOCUS_GAIN
+        );
+        hasAudioFocus = (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED);
+    }
+
+    private void abandonAudioFocus() {
+        if (hasAudioFocus) {
+            audioManager.abandonAudioFocus(audioFocusListener);
+            hasAudioFocus = false;
+        }
     }
 
     public boolean shouldStopWithApp() {
@@ -182,7 +241,7 @@ public class MusicManager {
         if(track == null) return;
 
         if(!playback.isRemote()) {
-            // requestFocus();
+            requestAudioFocus(); // lx-music fork: 请求音频焦点
 
             if(!receivingNoisyEvents) {
                 receivingNoisyEvents = true;
@@ -230,7 +289,7 @@ public class MusicManager {
         if(wakeLock.isHeld()) wakeLock.release();
         if(wifiLock != null && wifiLock.isHeld()) wifiLock.release();
 
-        // abandonFocus();
+        abandonAudioFocus(); // lx-music fork: 释放音频焦点
 
         if (playback.shouldAutoUpdateMetadata())
             metadata.setActive(false);
