@@ -160,6 +160,10 @@ async function setLyricButtonActive(active: boolean): Promise<void> {
   return TrackPlayer.setLyricButtonActive(active)
 }
 
+async function setNotificationRepeatMode(mode: number): Promise<void> {
+  return TrackPlayer.setNotificationRepeatMode(mode)
+}
+
 // MARK: - Player API
 
 async function reset(): Promise<void> {
@@ -288,6 +292,7 @@ export default {
   updateNowPlayingMetadata,
   updateNowPlayingTitles,
   setLyricButtonActive,
+  setNotificationRepeatMode,
 
   // MARK: - Player API
   reset,

@@ -71,6 +71,8 @@ public class MetadataManager {
 
     // 桌面歌词按钮状态（lx-music fork）
     private boolean lyricButtonActive = false;
+    // 播放模式（lx-music fork）：0=顺序 1=列表循环 2=单曲循环 3=随机
+    private int repeatMode = 1;
 
     @SuppressLint("UnspecifiedImmutableFlag")
     public MetadataManager(MusicService service, MusicManager manager) {
@@ -251,6 +253,12 @@ public class MetadataManager {
       updatePlayback(manager.getPlayback(), manager.getPlayback().getState() == 3);
     }
 
+    public void setRepeatMode(int mode) {
+      if (this.repeatMode == mode) return;
+      this.repeatMode = mode;
+      updatePlayback(manager.getPlayback(), manager.getPlayback().getState() == 3);
+    }
+
     /**
      * Updates the current track
      * @param track The new track
@@ -339,6 +347,23 @@ public class MetadataManager {
             PendingIntent.getService(service, 200,
                 new Intent(service, MusicService.class)
                     .setAction(MusicService.ACTION_TOGGLE_DESKTOP_LYRIC),
+                PendingIntent.FLAG_UPDATE_CURRENT)
+        ));
+
+        // Custom: playback repeat mode button (lx-music fork)
+        int repeatIcon;
+        switch (repeatMode) {
+            case 0: repeatIcon = R.drawable.notify_mode_order; break;
+            case 2: repeatIcon = R.drawable.notify_mode_single; break;
+            case 3: repeatIcon = R.drawable.notify_mode_random; break;
+            default: repeatIcon = R.drawable.notify_mode_loop; break;
+        }
+        builder.mActions.add(new Action(
+            repeatIcon,
+            "播放模式",
+            PendingIntent.getService(service, 201,
+                new Intent(service, MusicService.class)
+                    .setAction(MusicService.ACTION_CYCLE_REPEAT),
                 PendingIntent.FLAG_UPDATE_CURRENT)
         ));
 

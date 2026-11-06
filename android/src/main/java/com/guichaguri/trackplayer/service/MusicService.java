@@ -28,6 +28,7 @@ public class MusicService extends HeadlessJsTaskService {
      * Custom action: toggle desktop lyric (lx-music fork)
      */
     public static final String ACTION_TOGGLE_DESKTOP_LYRIC = "com.guichaguri.trackplayer.toggle_desktop_lyric";
+    public static final String ACTION_CYCLE_REPEAT = "com.guichaguri.trackplayer.cycle_repeat";
 
     MusicManager manager;
     Handler handler;
@@ -113,6 +114,11 @@ public class MusicService extends HeadlessJsTaskService {
 
         if(intent != null && ACTION_TOGGLE_DESKTOP_LYRIC.equals(intent.getAction())) {
             emit(MusicEvents.BUTTON_TOGGLE_DESKTOP_LYRIC, null);
+            return START_NOT_STICKY;
+        }
+
+        if(intent != null && ACTION_CYCLE_REPEAT.equals(intent.getAction())) {
+            emit(MusicEvents.BUTTON_CYCLE_REPEAT, null);
             return START_NOT_STICKY;
         }
 

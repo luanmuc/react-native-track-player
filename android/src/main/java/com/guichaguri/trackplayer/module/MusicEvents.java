@@ -31,6 +31,8 @@ public class MusicEvents extends BroadcastReceiver {
 
     // Custom: toggle desktop lyric (lx-music fork)
     public static final String BUTTON_TOGGLE_DESKTOP_LYRIC = "remote-toggle-desktop-lyric";
+    // Custom: cycle playback repeat mode (lx-music fork)
+    public static final String BUTTON_CYCLE_REPEAT = "remote-cycle-repeat";
 
     // Playback Events
     public static final String PLAYBACK_STATE = "playback-state";

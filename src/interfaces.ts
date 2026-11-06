@@ -179,6 +179,7 @@ export enum Event {
   RemoteDislike = 'remote-dislike',
   RemoteBookmark = 'remote-bookmark',
   RemoteToggleDesktopLyric = 'remote-toggle-desktop-lyric',
+  RemoteCycleRepeat = 'remote-cycle-repeat',
 }
 
 export enum TrackType {

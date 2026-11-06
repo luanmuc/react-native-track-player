@@ -76,6 +76,10 @@ public class MusicBinder extends Binder {
       manager.getMetadata().setLyricButtonActive(active);
     }
 
+    public void setRepeatMode(int mode) {
+      manager.getMetadata().setRepeatMode(mode);
+    }
+
     public int getRatingType() {
         return manager.getMetadata().getRatingType();
     }
