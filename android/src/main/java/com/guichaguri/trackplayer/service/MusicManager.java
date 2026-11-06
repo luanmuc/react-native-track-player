@@ -62,6 +62,7 @@ public class MusicManager {
         switch (focusChange) {
             case AudioManager.AUDIOFOCUS_GAIN:
                 // 重新获得焦点：恢复音量 + 恢复播放
+                hasAudioFocus = true;
                 if (wasDucking) {
                     playback.setVolume(normalVolume);
                     wasDucking = false;
@@ -69,7 +70,8 @@ public class MusicManager {
                 if (wasPlayingBeforeTransientLoss) {
                     wasPlayingBeforeTransientLoss = false;
                     new Handler().postDelayed(() -> {
-                        if (playback != null && hasAudioFocus) playback.play();
+                        // 只在「仍然暂停」时才恢复，用户这 500ms 内手动点过播放/暂停就不插手
+                        if (playback != null && hasAudioFocus && playback.getState() != 3) playback.play();
                     }, 500); // 延迟 500ms 恢复，避免通话刚结束还在听筒状态
                 }
                 break;
@@ -84,9 +86,16 @@ public class MusicManager {
                 playback.setVolume(duckVolume);
                 break;
             case AudioManager.AUDIOFOCUS_LOSS:
-                // 永久丢失：停止播放，释放焦点
+                // 永久丢失：暂停（保留进度），复位音量后释放焦点
+                // 旧实现用 stop()，ExoPlayback.stop() 内含 seekTo(0)，进度直接归零；
+                // 且 stop 后 player 音量仍是鸭子音量 0.2，下次播放声音异常小
+                wasPlayingBeforeTransientLoss = false;
+                if (wasDucking) {
+                    playback.setVolume(normalVolume);
+                    wasDucking = false;
+                }
                 abandonAudioFocus();
-                playback.stop();
+                playback.pause();
                 break;
         }
     };
@@ -131,6 +140,10 @@ public class MusicManager {
 
     // lx-music fork: 音频焦点请求/释放
     private void requestAudioFocus() {
+        // 已有焦点时直接返回（v1.9.2-b54）：旧实现每次 onPlay 都重复请求，
+        // 焦点栈累积会触发系统下发 LOSS，配合下面的 stop() 会把刚开始的播放打断，
+        // 表现为「点播放一直卡在加载态」
+        if (hasAudioFocus) return;
         int result = audioManager.requestAudioFocus(
             audioFocusListener,
             AudioManager.STREAM_MUSIC,

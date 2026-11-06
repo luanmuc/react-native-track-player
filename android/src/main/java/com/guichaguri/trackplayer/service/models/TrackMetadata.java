@@ -84,16 +84,16 @@ public abstract class TrackMetadata {
     public MediaMetadataCompat.Builder toMediaMetadata() {
         MediaMetadataCompat.Builder builder = new MediaMetadataCompat.Builder();
 
-        // 标题拼接音质标签：晴天 [FLAC]
+        // 标题拼接音质标签：晴天 [FLAC]（title 为空时不拼，避免出现 "null [FLAC]"）
         String displayTitle = title;
-        if (quality != null && !quality.isEmpty()) {
+        if (title != null && !title.isEmpty() && quality != null && !quality.isEmpty()) {
             displayTitle = title + " [" + quality + "]";
         }
         builder.putString(METADATA_KEY_TITLE, displayTitle);
 
-        // 艺术家行拼接音源：周杰伦 · helloworld(kw)
+        // 艺术家行拼接音源：周杰伦 · helloworld(kw)（artist 为空时不拼）
         String displayArtist = artist;
-        if (subSource != null && !subSource.isEmpty()) {
+        if (artist != null && !artist.isEmpty() && subSource != null && !subSource.isEmpty()) {
             displayArtist = artist + " · " + subSource;
         }
         builder.putString(METADATA_KEY_ARTIST, displayArtist);
