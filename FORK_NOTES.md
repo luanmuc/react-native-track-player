@@ -99,6 +99,7 @@
 |---|---|---|
 | 可计算项（4 条） | `node scripts/docs-audit.js` | 模式图标张数 / App 侧锁定 sha（跨仓读 App `package.json`）/ `PLAYER_CONTROL` 三处声明 / 4 个定制符号存在性 |
 | 行为语义 | `docs/DOC_SEMANTIC_CHECKLIST.md` 逐项人工过 | 模式映射含义、暂停语义、音质透传、上游合并注意事项 |
+| 推送前闸门 | `scripts/hooks/pre-push` | 本仓 `docs-audit` 出现 🔴 时拒绝 `git push` |
 
 安装（每个 clone 只需一次）：
 
