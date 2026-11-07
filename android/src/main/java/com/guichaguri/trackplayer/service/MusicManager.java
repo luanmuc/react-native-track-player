@@ -58,6 +58,10 @@ public class MusicManager {
     private boolean hasAudioFocus = false;
     private boolean wasDucking = false;
     private boolean wasPlayingBeforeTransientLoss = false;
+    // lx-music fork: 打断期间用户是否主动暂停过。
+    // 无法用 getState() 区分「被系统打断而暂停」和「用户自己按的暂停」，两者都是 STATE_PAUSED，
+    // 只靠状态判断会让打断结束后的自动续播把用户的暂停撤销掉（用户刚按暂停，通话结束音乐又响）。
+    private boolean userPausedDuringInterrupt = false;
     // lx-music fork: 两个子行为开关（仅在 handleAudioFocus 为 true 时才有意义）
     private boolean autoResumeAfterInterrupt = true;   // 临时打断结束后是否自动续播
     private boolean duckOnTransientDuck = true;        // CAN_DUCK 时是否降低音量
@@ -81,8 +85,9 @@ public class MusicManager {
                     // 关闭「打断结束后自动续播」时保持暂停，等用户手动点播放
                     if (autoResumeAfterInterrupt) {
                         new Handler().postDelayed(() -> {
-                            // 只在「仍然暂停」时才恢复，用户这 500ms 内手动点过播放/暂停就不插手
-                            if (playback != null && hasAudioFocus && playback.getState() != 3) playback.play();
+                            // lx-music fork: 只有「仍在暂停 + 用户在打断期间没有主动暂停过」才恢复。
+                            // 只看 getState() != 3 不够：用户手动暂停后状态同样是 STATE_PAUSED(2)，会被误判为「等待恢复」。
+                            if (playback != null && hasAudioFocus && !userPausedDuringInterrupt && playback.getState() != 3) playback.play();
                         }, 500); // 延迟 500ms 恢复，避免通话刚结束还在听筒状态
                     }
                 }
@@ -90,6 +95,7 @@ public class MusicManager {
             case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
                 // 短暂丢失（来电/其他 App 临时播放）：暂停播放，记录状态
                 wasPlayingBeforeTransientLoss = playback.getState() == 3; // STATE_PLAYING = 3
+                userPausedDuringInterrupt = false; // 新一轮打断，重置「用户主动暂停」标记
                 playback.pause();
                 break;
             case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK:
@@ -105,6 +111,7 @@ public class MusicManager {
                 // 旧实现用 stop()，ExoPlayback.stop() 内含 seekTo(0)，进度直接归零；
                 // 且 stop 后 player 音量仍是鸭子音量 0.2，下次播放声音异常小
                 wasPlayingBeforeTransientLoss = false;
+                userPausedDuringInterrupt = false;
                 if (wasDucking) {
                     playback.setVolume(volumeBeforeDuck);
                     wasDucking = false;
@@ -119,12 +126,40 @@ public class MusicManager {
         @Override
         public void onReceive(Context context, Intent intent) {
             // lx-music fork: 耳机拔线直接暂停，不依赖 JS 响应
-            if (playback != null) {
-                playback.pause();
+            ExoPlayback pb = playback;
+            if (pb == null) return;
+            // lx-music fork: 先复位鸭子音量，否则拔线前若处于压低状态（0.2），音量会一直停在 20%
+            if (wasDucking) {
+                pb.setVolume(volumeBeforeDuck);
+                wasDucking = false;
             }
+            // lx-music fork: 拔线视为用户主动暂停。若此时正处于焦点打断，标记住，
+            // 否则打断结束的自动续播会让音乐从扬声器外放
+            if (wasPlayingBeforeTransientLoss) userPausedDuringInterrupt = true;
+            pb.pause();
             service.emit(MusicEvents.BUTTON_PAUSE, null);
         }
     };
+
+    /**
+     * lx-music fork: 只记录「用户按了暂停」，不改播放状态。
+     * 通知栏/媒体键的暂停是 emit 给 JS、由 JS 回调才真正停的，中间有延迟；
+     * 先标记住，避免这期间恰好收到 AUDIOFOCUS_GAIN 被自动续播抢先。
+     */
+    public void markUserPaused() {
+        if (wasPlayingBeforeTransientLoss) userPausedDuringInterrupt = true;
+    }
+
+    /**
+     * lx-music fork: 用户主动暂停的统一入口（JS/通知栏按钮/拔耳机都走这里）。
+     * 目的：让「打断结束后自动续播」能区分「系统把播放暂停了」和「用户自己按了暂停」。
+     */
+    public void pauseByUser() {
+        markUserPaused();
+        ExoPlayback pb = getPlayback();
+        if (pb != null) pb.pause();
+    }
+
     private boolean receivingNoisyEvents = false;
 
     private boolean stopWithApp = false;

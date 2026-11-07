@@ -103,7 +103,10 @@ public class MetadataManager {
         openApp.setAction(Intent.ACTION_VIEW);
         openApp.setData(Uri.parse("trackplayer://notification.click"));
 
-        builder.setContentIntent(PendingIntent.getActivity(context, 0, openApp, PendingIntent.FLAG_CANCEL_CURRENT));
+        // lx-music fork: 与下面两个按钮的 PendingIntent 保持一致，显式声明不可变。
+        // 之前只有 CANCEL_CURRENT，targetSdk 升到 31+ 后创建即抛 IllegalArgumentException（建通知直接崩）
+        builder.setContentIntent(PendingIntent.getActivity(context, 0, openApp,
+                PendingIntent.FLAG_CANCEL_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0)));
 
         builder.setSmallIcon(R.drawable.play);
         builder.setCategory(NotificationCompat.CATEGORY_TRANSPORT);

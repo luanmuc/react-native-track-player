@@ -80,6 +80,12 @@ public class MusicBinder extends Binder {
       manager.getMetadata().setRepeatMode(mode);
     }
 
+    // lx-music fork: JS 暂停统一走 manager.pauseByUser()，
+    // 让焦点打断逻辑知道这次暂停是用户按的（否则打断结束后会自动续播）
+    public void pauseByUser() {
+      manager.pauseByUser();
+    }
+
     public int getRatingType() {
         return manager.getMetadata().getRatingType();
     }

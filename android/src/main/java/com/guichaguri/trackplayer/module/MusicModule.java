@@ -320,6 +320,7 @@ public class MusicModule extends ReactContextBaseJavaModule implements ServiceCo
       });
     }
 
+    // lx-music fork: 歌词按钮白/灰切换，由 JS 在歌词开关变化时调用
     @ReactMethod
     public void setLyricButtonActive(final boolean active, final Promise callback) {
       waitForConnection(() -> {
@@ -328,6 +329,8 @@ public class MusicModule extends ReactContextBaseJavaModule implements ServiceCo
       });
     }
 
+    // lx-music fork: 播放模式同步。导出名必须是 setNotificationRepeatMode，
+    // 上游自带一个 setRepeatMode(mode: RepeatMode)，同名会在 JS 侧覆盖掉它
     @ReactMethod
     public void setNotificationRepeatMode(final int mode, final Promise callback) {
       waitForConnection(() -> {
@@ -399,7 +402,7 @@ public class MusicModule extends ReactContextBaseJavaModule implements ServiceCo
     @ReactMethod
     public void pause(final Promise callback) {
         waitForConnection(() -> {
-            binder.getPlayback().pause();
+            binder.pauseByUser();
             callback.resolve(null);
         });
     }

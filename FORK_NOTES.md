@@ -7,7 +7,11 @@
 ## 分支与基线
 
 - 开发分支：`v2`
-- App 侧当前锁定的 commit：`87bf38ba`
+- App 侧当前锁定的 commit：`eceacb5`（b75 起从 `87bf38ba` 升级上来，这次只追加了 `quality` / `subSource` 两个可选类型字段，未改动任何定制逻辑）
+- 本文件里其余各条后面的短 sha 是**该条定制落地时的历史提交**，不是当前基线，改动时以本条为准
+
+> 上游官方已不再维护 `v2` 分支（最新为 v5，Android 侧已重写为 Kotlin）。
+> 因此本 fork **不做上游跟进**：任何上游变更都要按本文件的定制清单逐条重放，无法直接 merge。
 
 ## 定制清单
 
@@ -16,6 +20,8 @@
 - `requestAudioFocus` 加幂等：原实现每次播放都重复请求，焦点栈累积会触发系统下发 `LOSS`，`stop()` 把刚开始的播放打断，表现为点播放一直停在缓冲态
 - `AUDIOFOCUS_LOSS` 由 `stop()` 改为 `pause()`，不再把进度归零，同时复位鸭子音量
 - 关闭 media3 内置的 AudioFocusManager，避免与自实现的双重持有、互发 `LOSS`
+- 打断结束的自动续播**不得覆盖用户的主动暂停**（`userPausedDuringInterrupt`）：只看 `getState()` 区分不出「系统打断暂停」和「用户按了暂停」，两者都是 `STATE_PAUSED(2)`，旧写法会让用户刚按暂停、通话一结束音乐又响起来。用户暂停统一走 `MusicManager.pauseByUser()`
+- 拔耳机（`ACTION_AUDIO_BECOMING_NOISY`）除了暂停，还要**先复位鸭子音量**，否则拔线前若正在压低，音量会一直停在 20%；同时按「用户主动暂停」记录，避免打断结束时从扬声器外放
 
 ### 通知栏基础参数（`01f34b15`）
 
@@ -43,7 +49,13 @@
 ### PendingIntent 加固（`87bf38ba`）
 
 - 两处 `PendingIntent.getService`（requestCode 200 / 201）补 `FLAG_IMMUTABLE`
+- 点通知打开 App 的 `PendingIntent.getActivity`（requestCode 0）同样补上 `FLAG_IMMUTABLE`——这处原先漏了，targetSdk 升 31+ 时创建即抛 `IllegalArgumentException`，建通知直接崩
 - minSdk 21，用 `Build.VERSION.SDK_INT >= 23` 判断兼容；targetSdk 升到 31+ 前必须保留
+
+### 服务导出面加固（审计 `eceacb5` 补）
+
+- `MusicService` 必须 `exported="true"`（系统媒体键经 `MediaButtonReceiver` 转发进来），但两个自定义 action 走的是同一个服务，导出后任何第三方 App 都能 `startService` 伪造「切播放模式」「开关桌面歌词」
+- 用 `signature` 级自定义权限 `com.guichaguri.trackplayer.permission.PLAYER_CONTROL` 收回：库 manifest 里同时声明 `<permission>` 与 `<uses-permission>`，缺后者连同签名的本 App 都调不进来
 
 ## 文件索引
 
@@ -63,5 +75,8 @@
 1. `MetadataManager.updatePlayback(boolean playing)` 里有两处自定义 `builder.mActions.add`，上游重构 action 构建时最容易丢
 2. `MusicService.onStartCommand` 有三个定制分支（媒体键 / 词 / 模式），顺序敏感，上游插入新分支时逐个核对
 3. 导出名必须是 `setNotificationRepeatMode`——上游自带 `setRepeatMode(mode: RepeatMode)`，重名会导致导出冲突
-4. requestCode 200 与 201 已被占用，新增按钮别复用
+4. requestCode 200 与 201 已被占用，新增按钮别复用。另外 requestCode 0（点通知开 App）也要保持 `FLAG_IMMUTABLE`，三处一起看
 5. 模式图标的 alpha 必须与 `lyric_inactive` 一致（102），否则在通知栏里深浅不一
+6. **暂停只能走 `MusicManager.pauseByUser()`**（或 emit 前先 `markUserPaused()`）。上游若新增"直接 `playback.pause()`"的入口，会让焦点打断逻辑把这次用户暂停当成"等待恢复"，通话结束后自动续播
+7. `MusicBinder.getPlayback()` 会**懒创建**一个空 Bundle 的播放器（全部默认选项）。别在 `setupPlayer` 之前调它，否则定制开关会被默认值覆盖
+8. `MusicService` 上的 `PLAYER_CONTROL` 权限别删：删了服务就重新对外裸奔（第三方能伪造两个自定义 action）

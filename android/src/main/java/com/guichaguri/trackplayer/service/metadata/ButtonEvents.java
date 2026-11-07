@@ -36,6 +36,9 @@ public class ButtonEvents extends MediaSessionCompat.Callback {
 
     @Override
     public void onPause() {
+        // lx-music fork: 通知栏/蓝牙媒体键的暂停是 emit 给 JS 才真正执行的，中间有延迟。
+        // 先记下「用户按了暂停」，避免这期间收到 AUDIOFOCUS_GAIN 把暂停覆盖成自动续播。
+        manager.markUserPaused();
         service.emit(MusicEvents.BUTTON_PAUSE, null);
     }
 

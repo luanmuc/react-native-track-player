@@ -30,6 +30,8 @@ public abstract class TrackMetadata {
     public String genre;
     public long duration;
     public String lyric;
+    // lx-music fork: 音源名（如「树音」）与音质（如「FLAC」），由 JS 传入，
+    // 在 toMediaMetadata() 里拼到艺术家行尾部；上游没有这两个字段，升级时必须保留
     public String quality;
     public String subSource;
 

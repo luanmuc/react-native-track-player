@@ -1,4 +1,30 @@
-# Installation
+# 本 fork 的变更记录（lx-music fork）
+
+> 本文件上半部分是**本 fork 自己的变更**；下半部分（从「Upstream: Installation」起）是上游原文，与本 fork 无关。
+> 详细定制理由见 [`FORK_NOTES.md`](./FORK_NOTES.md)；审计记录见 `docs/AUDIT_REPORT-2026-11-07.md`。
+
+## 2026-11-07 · 审计修复（基线 `eceacb5`）
+
+- 修复「打断后自动续播覆盖用户主动暂停」：新增 `userPausedDuringInterrupt`，用户暂停统一走 `MusicManager.pauseByUser()`
+- 点通知打开 App 的 `PendingIntent` 补 `FLAG_IMMUTABLE`（原先只有两个按钮补了，这处漏）
+- `MusicService` 加 `signature` 级自定义权限，堵住第三方 App 伪造「切播放模式 / 开关桌面歌词」
+- 拔耳机时复位鸭子音量，并按用户主动暂停记录
+- 补齐 `TrackMetadata` / `MusicModule` / `MusicBinder` 三处 `lx-music fork` 归口注释
+- 文档：`FORK_NOTES` 锁定 sha 更新为 `eceacb5`、README 补 fork 标识、新增审计三件套（计划/报告/执行记录）
+
+## 历史定制（按落地提交）
+
+| 提交 | 内容 |
+|---|---|
+| `01f34b15` | 音频焦点三项、通知栏 `quality`/`subSource` 注入与判空、歌词按钮 |
+| `e9585c96` | 标题只放歌名、艺术家行拼接音源与音质 |
+| `ca72e89d` | 播放模式按钮（requestCode 201、4 套 × 5 密度图标 alpha=102、原生去重） |
+| `87bf38ba` | 两处按钮 `PendingIntent` 补 `FLAG_IMMUTABLE` |
+| `eceacb5` | 仅追加 `quality` / `subSource` 类型字段（b75 升级） |
+
+---
+
+# Upstream: Installation
 
 To install `react-native-track-player` see this [guide](https://react-native-track-player.js.org/install/).
 

@@ -5,10 +5,24 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
+    <!-- lx-music fork: 播放器服务必须保持 exported=true 供系统媒体键（MediaButtonReceiver）转发，
+         但 fork 新增的两个自定义 action（切播放模式、开关桌面歌词）走的是同一个服务，
+         exported 会让任意 App 都能 startService 伪造这两个 action（能凭空切换本机播放模式/歌词开关）。
+         这里用 signature 级自定义权限把它收回：本 App 与同签名应用自动持有，第三方拿不到。
+         下面的 uses-permission 必须与本 App 的签名一致才会被授予，缺了它连自己都调不进来。 -->
+    <permission
+        android:name="com.guichaguri.trackplayer.permission.PLAYER_CONTROL"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="com.guichaguri.trackplayer.permission.PLAYER_CONTROL" />
+
     <application>
 
         <!-- The main service, handles playback, playlists and media buttons -->
-        <service android:name=".service.MusicService" android:enabled="true" android:exported="true">
+        <service
+            android:name=".service.MusicService"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="com.guichaguri.trackplayer.permission.PLAYER_CONTROL">
             <intent-filter>
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
