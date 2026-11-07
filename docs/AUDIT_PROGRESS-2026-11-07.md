@@ -67,4 +67,4 @@
 
 - 代码修复：独立提交（`fix(player): 审计修复 7 项…`），涉及 10 个文件
 - 四份文档（本文件、`AUDIT_PLAN`、`AUDIT_REPORT`、`FIX_PLAN`）：独立提交
-- 两者一并推送到 `origin/v2`，推送即触发 `.github/workflows/platform-validation.yml` 的 `build-android` 编译（Java 侧唯一验证入口）
+- 两者一并推送到 `origin/v2`。**fork 仓库的 Actions 需 owner 手动访问 `/actions/enable` 才会跑**：实测推送后 `workflow_runs.total_count` 恒为 0（API 的 `actions/permissions.enabled=true` 不代表已授权），因此 Java 编译验证改由 App 仓库的 release CI 承担，见下一节。

@@ -127,7 +127,7 @@
 | G2 | 图标 alpha 统一 102（与「词」关闭态一致），观感一致 | 像素采样统计 | P1 / L0 |
 | G3 | 图标命名与 `R.drawable.*` 引用一一对应（无引用不存在资源） | 编译期即暴露 → L1 | P0 / L1 |
 | G4 | 图标体积（20 张总大小）对 APK 的影响 | du 统计 | P2 / L0 |
-| G5 | `lib/` 不入库 + `prepare: build` 的安装链（离线可复现性） | 空仓库安装模拟 → blocked（无 npm 网络） | P1 / L1+L3 |
+| G5 | `lib/` 不入库 + `prepare: build` 的安装链（离线可复现性） | 空仓库安装模拟 → blocked（沙箱 registry 缺 `flow-estree@0.339.0`，不是网络不可达） | P1 / L1+L3 |
 | G6 | `tsconfig` 输出目录与 `package.json` `main`/`types` 路径一致 | 字段比对 | P1 / L1 |
 | G7 | lint/format 是否会因定制代码报错（`yarn lint`） | 可跑则跑 | P2 / L1 |
 | G8 | APK 内是否确实带上自定义 drawable（未被 shrinker 剔除） | 打 APK + 解包核对（已跑通方法） | P0 / L3 |

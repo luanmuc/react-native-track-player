@@ -24,7 +24,7 @@
 | R6 | **已修** | `noisyReceiver` 先复位鸭子音量再暂停，并按用户主动暂停记录 |
 | R8/R9/R10/R11/R12 | 不改 | 理由见 `FIX_PLAN` 的「不做」 |
 
-**Java 编译未跑**：本机无 `javac`/`ANDROID_HOME`。仓库原生入口是 `platform-validation.yml` 的 `build-android`（`./gradlew assembleDebug`），需 push 后由 CI 给出真正的编译结论。TS 侧已本地重跑 `tsc`（`exit=0`）。
+**Java 编译（审计当时未跑，已补验）**：审计时本机无 `javac`/`ANDROID_HOME`，仓库原生入口 `platform-validation.yml` 在 fork 仓库下不自动运行（需 owner `/actions/enable`，实测 `workflow_runs` 恒 0）。已改由 **App 仓库 release CI 补验**：其 gradle 直接编译 `node_modules/react-native-track-player/android` 的 Java 源码，`v1.9.2-b78` 的 Android / Release 两个 job 全绿；包内实证 Manifest 含新权限 `PLAYER_CONTROL`（b77 命中 0 / b78 命中 1）、`resources.arsc` 含 4 个 `notify_mode_*` 与 `lyric_inactive`/`default_artwork`、Hermes bundle 含两个定制事件常量。TS 侧本地重跑 `tsc`（`exit=0`）。
 
 ### R13（中·审计后补）`MusicBinder.getPlayback()` 会懒创建一个「默认配置」的播放器实例
 
