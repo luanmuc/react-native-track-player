@@ -1,0 +1,9 @@
+#!/bin/sh
+# 提交前打印文档一致性红/黄项（本 fork 不启用自带 CI，hook 是唯一闸门）
+ROOT=$(git rev-parse --show-toplevel)
+if [ -f "$ROOT/scripts/docs-audit.js" ]; then
+  echo ""
+  node "$ROOT/scripts/docs-audit.js" --dry-run 2>/dev/null | grep -E "🔴|🟡" | head -15
+  echo "（无输出=全绿；行为语义见 docs/DOC_SEMANTIC_CHECKLIST.md）"
+fi
+exit 0

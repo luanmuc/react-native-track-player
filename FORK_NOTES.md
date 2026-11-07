@@ -90,3 +90,20 @@
 6. **暂停只能走 `MusicManager.pauseByUser()`**（或 emit 前先 `markUserPaused()`）。上游若新增"直接 `playback.pause()`"的入口，会让焦点打断逻辑把这次用户暂停当成"等待恢复"，通话结束后自动续播
 7. `MusicBinder.getPlayback()` 会**懒创建**一个空 Bundle 的播放器（全部默认选项）。别在 `setupPlayer` 之前调它，否则定制开关会被默认值覆盖
 8. `MusicService` 上的 `PLAYER_CONTROL` 权限别删：删了服务就重新对外裸奔（第三方能伪造两个自定义 action）
+
+## 文档一致性闸门（本 fork 唯一自动机制）
+
+本 fork 不启用自带 CI，因此文档同步靠两层，都在本地：
+
+| 层 | 命令 | 覆盖 |
+|---|---|---|
+| 可计算项（4 条） | `node scripts/docs-audit.js` | 模式图标张数 / App 侧锁定 sha（跨仓读 App `package.json`）/ `PLAYER_CONTROL` 三处声明 / 4 个定制符号存在性 |
+| 行为语义 | `docs/DOC_SEMANTIC_CHECKLIST.md` 逐项人工过 | 模式映射含义、暂停语义、音质透传、上游合并注意事项 |
+
+安装（每个 clone 只需一次）：
+
+```bash
+git config core.hooksPath scripts/hooks   # 提交时自动打印红/黄项
+```
+
+跨仓检查需要兄弟仓可读：`docs-audit.js` 会去读 `../lx-music-mobile/package.json`，本地无该目录时该条显示 ⚪ 跳过。
