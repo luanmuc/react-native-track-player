@@ -304,7 +304,7 @@ public class MusicManager {
         if(wakeLock.isHeld()) wakeLock.release();
         if(wifiLock != null && wifiLock.isHeld()) wifiLock.release();
 
-        if (playback.shouldAutoUpdateMetadata())
+        if (playback != null && playback.shouldAutoUpdateMetadata())
             metadata.setActive(true);
     }
 
@@ -323,7 +323,7 @@ public class MusicManager {
 
         abandonAudioFocus(); // lx-music fork: 释放音频焦点
 
-        if (playback.shouldAutoUpdateMetadata())
+        if (playback != null && playback.shouldAutoUpdateMetadata())
             metadata.setActive(false);
     }
 
@@ -333,7 +333,7 @@ public class MusicManager {
         Bundle bundle = new Bundle();
         bundle.putInt("state", state);
         service.emit(MusicEvents.PLAYBACK_STATE, bundle);
-        if (playback.shouldAutoUpdateMetadata()) handleUpdateMetadata();
+        if (playback != null && playback.shouldAutoUpdateMetadata()) handleUpdateMetadata();
     }
 
     private void handleUpdateMetadata() {

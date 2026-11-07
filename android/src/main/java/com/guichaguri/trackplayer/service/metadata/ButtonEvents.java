@@ -92,6 +92,8 @@ public class ButtonEvents extends MediaSessionCompat.Callback {
 
     @Override
     public void onSkipToQueueItem(long id) {
+        // lx-music fork: 播放器可能尚未初始化（或已销毁），manager.getPlayback() 为 null 时会崩主线程
+        if (manager.getPlayback() == null) return;
         List<Track> tracks = manager.getPlayback().getQueue();
 
         for(int i = 0; i < tracks.size(); i++) {
