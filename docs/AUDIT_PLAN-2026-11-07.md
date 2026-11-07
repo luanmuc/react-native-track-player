@@ -10,7 +10,7 @@
 
 | 项 | 数值 | 说明 |
 |---|---|---|
-| TypeScript 源码 | 4 文件 / 730 行（`src/interfaces.ts`、`src/trackPlayer.ts`、`src/constants.ts`、`src/index.ts`） | App 直接 import 的契约层 |
+| TypeScript 源码 | 4 文件 / 730 行（`src/interfaces.ts` 264 行、`src/trackPlayer.ts` 321 行、`src/hooks.ts` 139 行、`src/index.ts` 6 行） | App 直接 import 的契约层 |
 | Android Java | 17 文件 / 3,644 行 | 全部定制落点 |
 | iOS Swift | 9 文件 / 1,125 行 | App 不发布 iOS，仅做静态影响评估 |
 | 图标资源 | 20 张（4 状态 × 5 密度） | 模式按钮专用 |
