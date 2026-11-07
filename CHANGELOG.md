@@ -10,7 +10,8 @@
 - `MusicService` 加 `signature` 级自定义权限，堵住第三方 App 伪造「切播放模式 / 开关桌面歌词」
 - 拔耳机时复位鸭子音量，并按用户主动暂停记录
 - 补齐 `TrackMetadata` / `MusicModule` / `MusicBinder` 三处 `lx-music fork` 归口注释
-- 文档：`FORK_NOTES` 锁定 sha 更新为 `eceacb5`、README 补 fork 标识、新增审计三件套（计划/报告/执行记录）
+- 文档：`FORK_NOTES` 锁定 sha 更新为 `a0b2a87`、README 补 fork 标识与「不跟进上游」结论、新增审计三件套 + 修复计划（`docs/AUDIT_*` / `FIX_PLAN`）
+- 文档续（同日后三次提交）：`FORK_NOTES` 增「验证方式」节——**不启用 fork 自带的 `platform-validation.yml`**（fork 仓库需 owner 手动 `/actions/enable`，且它验的是 example 工程），验证统一走 App 仓库的 release CI；锁定 sha 与两处基线标注（服务导出面加固、`requestCode 0` 的 `FLAG_IMMUTABLE`）更正为 `a0b2a87`
 
 ## 历史定制（按落地提交）
 
