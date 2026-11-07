@@ -61,8 +61,10 @@ public class MusicManager {
     // lx-music fork: 两个子行为开关（仅在 handleAudioFocus 为 true 时才有意义）
     private boolean autoResumeAfterInterrupt = true;   // 临时打断结束后是否自动续播
     private boolean duckOnTransientDuck = true;        // CAN_DUCK 时是否降低音量
-    private final float normalVolume = 1.0f;
     private final float duckVolume = 0.2f;
+    // 压低前的实际音量（用户可能在 App 里把音量调到 60%），恢复时必须还原成这个值，
+    // 不能写死 1.0，否则导航播报结束后音乐直接跳到 100%
+    private float volumeBeforeDuck = 1.0f;
 
     private final AudioManager.OnAudioFocusChangeListener audioFocusListener = focusChange -> {
         if (playback == null || !handleAudioFocus) return;
@@ -71,7 +73,7 @@ public class MusicManager {
                 // 重新获得焦点：恢复音量 + 恢复播放
                 hasAudioFocus = true;
                 if (wasDucking) {
-                    playback.setVolume(normalVolume);
+                    playback.setVolume(volumeBeforeDuck);
                     wasDucking = false;
                 }
                 if (wasPlayingBeforeTransientLoss) {
@@ -95,6 +97,7 @@ public class MusicManager {
                 // 关闭「降音量」开关时忽略该请求，保持原音量（导航音会直接盖在音乐上）
                 if (!duckOnTransientDuck) break;
                 wasDucking = true;
+                volumeBeforeDuck = playback.getVolume(); // 记住用户当前音量，恢复时还原这个值
                 playback.setVolume(duckVolume);
                 break;
             case AudioManager.AUDIOFOCUS_LOSS:
@@ -103,7 +106,7 @@ public class MusicManager {
                 // 且 stop 后 player 音量仍是鸭子音量 0.2，下次播放声音异常小
                 wasPlayingBeforeTransientLoss = false;
                 if (wasDucking) {
-                    playback.setVolume(normalVolume);
+                    playback.setVolume(volumeBeforeDuck);
                     wasDucking = false;
                 }
                 abandonAudioFocus();
