@@ -46,13 +46,13 @@
 - 图标 4 套 × 5 密度，统一白色 alpha=102（与「词」关闭态一致，不做白灰二态）
 - 原生侧 `if (repeatMode == mode) return` 去重，防止连点重复刷通知
 
-### PendingIntent 加固（`87bf38ba`）
+### PendingIntent 加固（`87bf38ba` 起，审计 `a0b2a87` 补 requestCode 0）
 
 - 两处 `PendingIntent.getService`（requestCode 200 / 201）补 `FLAG_IMMUTABLE`
 - 点通知打开 App 的 `PendingIntent.getActivity`（requestCode 0）同样补上 `FLAG_IMMUTABLE`——这处原先漏了，targetSdk 升 31+ 时创建即抛 `IllegalArgumentException`，建通知直接崩
 - minSdk 21，用 `Build.VERSION.SDK_INT >= 23` 判断兼容；targetSdk 升到 31+ 前必须保留
 
-### 服务导出面加固（审计 `eceacb5` 补）
+### 服务导出面加固（审计 `a0b2a87` 新增）
 
 - `MusicService` 必须 `exported="true"`（系统媒体键经 `MediaButtonReceiver` 转发进来），但两个自定义 action 走的是同一个服务，导出后任何第三方 App 都能 `startService` 伪造「切播放模式」「开关桌面歌词」
 - 用 `signature` 级自定义权限 `com.guichaguri.trackplayer.permission.PLAYER_CONTROL` 收回：库 manifest 里同时声明 `<permission>` 与 `<uses-permission>`，缺后者连同签名的本 App 都调不进来
