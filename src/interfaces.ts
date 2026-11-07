@@ -235,6 +235,9 @@ export interface TrackMetadataBase {
   rating?: number | boolean
   isLiveStream?: boolean
   lyric?: string
+  // lx-music fork: 通知栏艺术家行拼接用的音质标签和子源名
+  quality?: string
+  subSource?: string
 }
 
 export interface NowPlayingMetadata extends TrackMetadataBase {
