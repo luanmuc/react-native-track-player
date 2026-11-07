@@ -79,6 +79,18 @@ export interface PlayerOptions {
    */
   handleAudioFocus?: boolean
   /**
+   * Whether to automatically resume playback after a transient audio focus interruption ends.
+   * Only meaningful when `handleAudioFocus` is `true`.
+   * Defaults to `true`.
+   */
+  autoResumeAfterInterrupt?: boolean
+  /**
+   * Whether to lower volume when another app requests ducking (e.g. navigation prompts).
+   * Only meaningful when `handleAudioFocus` is `true`.
+   * Defaults to `true`.
+   */
+  duckOnTransientDuck?: boolean
+  /**
    * Whether to enable audio offload.
    * Defaults to `true`.
    */

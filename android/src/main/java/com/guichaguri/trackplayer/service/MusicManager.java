@@ -58,6 +58,9 @@ public class MusicManager {
     private boolean hasAudioFocus = false;
     private boolean wasDucking = false;
     private boolean wasPlayingBeforeTransientLoss = false;
+    // lx-music fork: 两个子行为开关（仅在 handleAudioFocus 为 true 时才有意义）
+    private boolean autoResumeAfterInterrupt = true;   // 临时打断结束后是否自动续播
+    private boolean duckOnTransientDuck = true;        // CAN_DUCK 时是否降低音量
     private final float normalVolume = 1.0f;
     private final float duckVolume = 0.2f;
 
@@ -73,10 +76,13 @@ public class MusicManager {
                 }
                 if (wasPlayingBeforeTransientLoss) {
                     wasPlayingBeforeTransientLoss = false;
-                    new Handler().postDelayed(() -> {
-                        // 只在「仍然暂停」时才恢复，用户这 500ms 内手动点过播放/暂停就不插手
-                        if (playback != null && hasAudioFocus && playback.getState() != 3) playback.play();
-                    }, 500); // 延迟 500ms 恢复，避免通话刚结束还在听筒状态
+                    // 关闭「打断结束后自动续播」时保持暂停，等用户手动点播放
+                    if (autoResumeAfterInterrupt) {
+                        new Handler().postDelayed(() -> {
+                            // 只在「仍然暂停」时才恢复，用户这 500ms 内手动点过播放/暂停就不插手
+                            if (playback != null && hasAudioFocus && playback.getState() != 3) playback.play();
+                        }, 500); // 延迟 500ms 恢复，避免通话刚结束还在听筒状态
+                    }
                 }
                 break;
             case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
@@ -86,6 +92,8 @@ public class MusicManager {
                 break;
             case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK:
                 // 可压低（导航播报等）：降音量到 20%
+                // 关闭「降音量」开关时忽略该请求，保持原音量（导航音会直接盖在音乐上）
+                if (!duckOnTransientDuck) break;
                 wasDucking = true;
                 playback.setVolume(duckVolume);
                 break;
@@ -202,6 +210,8 @@ public class MusicManager {
         boolean autoUpdateMetadata = options.getBoolean("autoUpdateMetadata", true);
         boolean shouldHandleAudioFocus = options.getBoolean("handleAudioFocus", true);
         this.handleAudioFocus = shouldHandleAudioFocus; // lx-music fork: 手动焦点实现按此开关启停
+        this.autoResumeAfterInterrupt = options.getBoolean("autoResumeAfterInterrupt", true);
+        this.duckOnTransientDuck = options.getBoolean("duckOnTransientDuck", true);
         boolean shouldEnableAudioOffload = options.getBoolean("audioOffload", true);
         int minBuffer = (int)Utils.toMillis(options.getDouble("minBuffer", Utils.toSeconds(DEFAULT_MIN_BUFFER_MS)));
         int maxBuffer = (int)Utils.toMillis(options.getDouble("maxBuffer", Utils.toSeconds(DEFAULT_MAX_BUFFER_MS)));
