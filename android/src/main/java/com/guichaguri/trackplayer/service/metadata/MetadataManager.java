@@ -202,7 +202,10 @@ public class MetadataManager {
      * @param bitmap The new artwork
      */
     protected void updateArtwork(Bitmap bitmap) {
-        Track track = manager.getPlayback().getCurrentTrack();
+        // lx-music fork: 封面异步回调可能在播放器销毁后到达，判空避免 NullPointerException
+        ExoPlayback playback = manager.getPlayback();
+        if (playback == null) return;
+        Track track = playback.getCurrentTrack();
         if(track == null) return;
 
         MediaMetadataCompat.Builder metadata = track.toMediaMetadata();
@@ -241,7 +244,9 @@ public class MetadataManager {
         prevMetadata.putString("android.media.metadata.LYRICS", data.getString("lyric"));
       }
       session.setMetadata(prevMetadata.build());
-      updatePlaybackState(manager.getPlayback());
+      // lx-music fork: 播放器可能尚未初始化（启动早期同步歌词/标题时 playback 为 null），判空防崩溃
+      ExoPlayback playback = manager.getPlayback();
+      if (playback != null) updatePlaybackState(playback);
     }
 
     /**
@@ -250,13 +255,21 @@ public class MetadataManager {
      */
     public void setLyricButtonActive(boolean active) {
       this.lyricButtonActive = active;
-      updatePlayback(manager.getPlayback(), manager.getPlayback().getState() == 3);
+      // lx-music fork: 启动早期 JS 会同步歌词按钮状态，此时 playback 还没创建（null），
+      // 直接 deref 会 NullPointerException 把主线程崩掉；状态已记录，等播放器初始化后随通知一起生效
+      ExoPlayback playback = manager.getPlayback();
+      if (playback == null) return;
+      updatePlayback(playback, playback.getState() == 3);
     }
 
     public void setRepeatMode(int mode) {
       if (this.repeatMode == mode) return;
       this.repeatMode = mode;
-      updatePlayback(manager.getPlayback(), manager.getPlayback().getState() == 3);
+      // lx-music fork: 同上——启动时 syncNotificationRepeatMode 会在播放器初始化前到达，
+      // 此时 manager.getPlayback() 为 null，必须判空（b68 关开关后打不开的直接原因）
+      ExoPlayback playback = manager.getPlayback();
+      if (playback == null) return;
+      updatePlayback(playback, playback.getState() == 3);
     }
 
     /**
