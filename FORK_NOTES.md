@@ -57,6 +57,16 @@
 - `MusicService` 必须 `exported="true"`（系统媒体键经 `MediaButtonReceiver` 转发进来），但两个自定义 action 走的是同一个服务，导出后任何第三方 App 都能 `startService` 伪造「切播放模式」「开关桌面歌词」
 - 用 `signature` 级自定义权限 `com.guichaguri.trackplayer.permission.PLAYER_CONTROL` 收回：库 manifest 里同时声明 `<permission>` 与 `<uses-permission>`，缺后者连同签名的本 App 都调不进来
 
+## 验证方式（2026-11-07 决定，勿反复纠结）
+
+- **唯一验证入口：App 仓库的 release CI**（`luanmuc/mobile-app` 的 `.github/workflows/release.yml`）。它的 gradle 直接编译 `node_modules/react-native-track-player/android` 下的 Java 源码，产物就是用户装的包，是最贴近真实消费链路的验证。
+- **本 fork 自带的 `platform-validation.yml` 刻意不启用**。fork 仓库需 owner 到 `/actions/enable` 手动确认后才允许跑 workflow（API 会显示 `enabled: true`，但 `workflow_runs` 恒为 0，这是 fork 特有的安全默认）。不启用的理由：
+  1. 它验的是 fork 自带的 example 工程（`example/android ./gradlew assembleDebug`），跟 App 实际消费的链路不是一条，它绿了不代表 App 编得过；
+  2. 它还带 iOS / Windows 两个 job，跑在 `macos-latest` + 老 simulator 配置上，大概率长期红，变成噪音；
+  3. fork 的任何改动都要升 App 的 lock 才对用户生效，App 编译本来就是必经环节，多一套 CI 是重复建设。
+- 所以：**推送本 fork 后看到 Actions 一个 run 都没有，是预期状态，不是故障**。要验证就走「升 App lock → push master → 看 Build workflow 的 Android job」。
+- **唯一例外**：若将来需要在不碰 App 的情况下独立验本 fork，先把 workflow 精简成只编 Android library 的 AAR（仓库根 `android/` 下 `./gradlew assembleRelease`，不依赖 example 工程），再去 `/actions/enable` 启用；上游原版那个三平台 workflow 不要直接开。
+
 ## 文件索引
 
 | 文件 | 改了什么 |
