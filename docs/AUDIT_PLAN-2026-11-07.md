@@ -191,3 +191,58 @@
 - 执行后：`docs/AUDIT_REPORT-2026-11-07.md`（分级发现 + 每条的可复现命令/锚点 + blocked 清单）
 - 过程：`docs/AUDIT_PROGRESS-2026-11-07.md`（逐维结论、放弃与反证记录）
 - 修复若经确认：同步 `FORK_NOTES.md`（含过期 sha）与 App 侧 `KNOWN_ISSUES` / `UPSTREAM_LIFECYCLE`
+
+### J. 语义契约与跨仓签名一致性（2026-11-08 新增）
+
+> 来源：第二轮全覆盖审查。原生仓库没有 UI 文案，本组聚焦：
+> **JS 暴露面 ↔ 原生 @ReactMethod 是否一一对应**，以及 **App 锁定的 sha 是否真的含所需方法**。
+
+### 触发案例（2026-11-08）
+
+听歌统计：侧边栏文案是「今日 {today} 次 · 时长 {time}」，实际传的是累计 `playTime`。
+类型全对（都是 number）、40 条文档规则全绿、`check_ts_syntax` 0 错误——**功能是错的**。
+
+### 根因：判据太宽，执行时被简化
+
+原计划里的 i18n / 状态机 / 持久化 组，执行时被落成"键数对不对""字段有没有"，没有落到
+"文案说的意思 **vs** 数据实际的意思"。这类缺陷在单文件纵向读时处处自洽，只有横向穿才看得见。
+
+### 三条硬判据（改动 UI 展示 / 统计 / 配置时必须过）
+
+1. **文案 ↔ 字段横向穿**：每个带参 `t()` 填五行表
+   `文案键 → 占位符 → 传入表达式 → 字段定义 → 写入点`，任一处语义不符即缺陷。
+   易错语义词：今日/累计/剩余/总数/上次/平均/速度/已下载/本次/总时长。
+2. **类型正确不算通过**：`playTime` 与 `dayTime` 都是 number，编译器不会警告；
+   必须人工确认"这个数字语义上是不是文案要的那一个"。
+3. **"改过"不等于"审过"**：注释里的"已修正"只证明被碰过一次，不证明展示层被审查过。
+
+### 三类假阳性（写报告前必须过滤，否则制造假缺陷）
+
+| 假阳性 | 成因 | 过滤方法 |
+|---|---|---|
+| 文案占位符"缺参" | 脚本不认 ES6 属性简写 `{ name }` | 回读源码确认调用形态 |
+| "设置项没人读" | 正则漏 `useSettingValue('...')` / 动态 key | 用短名全仓 grep 复核 |
+| "导出零引用=没接线" | 可能是有意保留的上游死代码 | `git log -S '<符号>'` 回查引入提交再定性 |
+
+### 一条跨仓新判据
+
+**依赖版本"落后"不等于"有问题"**：App 锁定 fork sha 落后 9 个提交，需先看这 9 个提交的性质
+（本例全为 docs/hooks，零代码变更 → 无风险），不能只比较 sha 差异就判缺陷。
+
+### 本轮实跑结果（作为基线）
+
+- JS 导出 vs Java `@ReactMethod` 机械比对：**一一对应**
+  （JS 侧多 `registerPlaybackService`/`addEventListener`/类型导出，属 JS 层实现，非原生缺失）
+- App 调用 `TrackPlayer.setNotificationRepeatMode`（走 `unknown as` 断言，绕过类型）：
+  - rntp `MusicModule.java:335` 存在 `setNotificationRepeatMode(int, Promise)` ✅
+  - App 锁定 sha `a0b2a87` **确实包含**该方法（`git grep` 命中 Java 2 处 / TS 3 处）
+- App 锁定 `a0b2a87` 落后 fork HEAD 9 个提交 → 逐个查看：**全部为 docs/hooks，零代码变更** → 无功能风险
+
+### 复核命令
+
+```bash
+git merge-base --is-ancestor ca72e89 a0b2a87 && echo "含播放模式按钮"
+git grep -c "setNotificationRepeatMode" a0b2a87 -- android/ src/
+git log --oneline a0b2a87..HEAD          # 落后提交必须逐个看性质
+grep -rh -A1 "@ReactMethod" android/src/main/java --include=*.java | grep -oE "public (void|double|boolean|String) \w+"
+```
