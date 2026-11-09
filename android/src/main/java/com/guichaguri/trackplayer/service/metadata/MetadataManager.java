@@ -12,6 +12,9 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Build;
@@ -214,7 +217,11 @@ public class MetadataManager {
         MediaMetadataCompat.Builder metadata = track.toMediaMetadata();
 
         metadata.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap);
-        builder.setLargeIcon(bitmap);
+
+        // lx-music fork: 通知栏专辑图裁成圆角 8dp，更精致
+        float density = service.getResources().getDisplayMetrics().density;
+        Bitmap roundedBitmap = toRoundedCornerBitmap(bitmap, 8 * density);
+        builder.setLargeIcon(roundedBitmap);
 
         // lx-music fork: 通知栏颜色跟随专辑封面主色
         try {
@@ -230,6 +237,27 @@ public class MetadataManager {
 
         session.setMetadata(metadata.build());
         updateNotification();
+    }
+
+    /**
+     * lx-music fork: 将 Bitmap 裁成圆角矩形
+     * @param bitmap 原图
+     * @param radius 圆角半径（px）
+     * @return 裁剪后的 Bitmap
+     */
+    private Bitmap toRoundedCornerBitmap(Bitmap bitmap, float radius) {
+        try {
+            Bitmap output = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), bitmap.getConfig());
+            Canvas canvas = new Canvas(output);
+            Paint paint = new Paint();
+            RectF rect = new RectF(0, 0, bitmap.getWidth(), bitmap.getHeight());
+            paint.setAntiAlias(true);
+            canvas.drawRoundRect(rect, radius, radius, paint);
+            canvas.drawBitmap(bitmap, 0, 0, paint);
+            return output;
+        } catch (Exception e) {
+            return bitmap; // 裁剪失败返回原图
+        }
     }
 
     public void updateTitles(Bundle data) {
