@@ -36,6 +36,22 @@ react-native-track-player is made possible by the generosity of the sponsors bel
 
 ---
 
+## 本地可做的检查（无 Android SDK 也能跑）
+
+```bash
+npm run check:java      # 只用 javac 的语法检查，不依赖 SDK
+node scripts/docs-audit.js   # 定制符号 / 文档一致性
+```
+
+`check:java` 对每个 `.java` 跑 `javac -proc:none`，把报错分成两类：
+
+- **类路径缺失**（`package android.* does not exist`、`cannot find symbol`、缺父类导致的
+  `@Override` 报错、`DataSource.Factory` 目标类型缺失导致的 lambda 报错）→ 只计数，**不判红**；
+- **真正的语法错误**（`illegal start of expression`、`';' expected`、`class, interface, or enum expected` 等）→ 判红。
+
+它拦不住类型错误和语义错误——**真正的编译证据只有 CI**（App 的 Android job）。
+变异验证：往临时目录塞 `int x = ;` 会返回 rc=1。
+
 ## ⚠️ V2 Migration Guide
 
 All queue methods have been updating to work on indexes instead of id's. We want this library to support all kinds of apps -- and moving to be index based will allow us to better support applications who have long/endless queues and in the future to allow us to build a performant API around queue management.
