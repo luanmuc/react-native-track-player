@@ -1,3 +1,10 @@
+## 2026-11-16 · 恢复语义门禁（check:truth）+ 打断恢复延时抽常量
+
+- 新增 `scripts/check_truth_gates.js`：4 条 Java 语义门禁（queueId 单调序列 / 播放状态禁止裸数字比较 /
+  AGP 与 namespace 自洽 / `postDelayed` 延时必须具名常量），跳过计红、末尾带执行条数。
+- `MusicManager` 的打断恢复延时 `500` 抽成 `INTERRUPT_RESUME_DELAY_MS`。
+- `package.json` 增加 `check:truth` / `check` 两个入口；README 写清「语义门禁 ≠ 编译证据」。
+
 # 本 fork 的变更记录（lx-music fork）
 
 > 本文件上半部分是**本 fork 自己的变更**；下半部分（从「Upstream: Installation」起）是上游原文，与本 fork 无关。

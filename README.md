@@ -39,6 +39,7 @@ react-native-track-player is made possible by the generosity of the sponsors bel
 ## 本地可做的检查（无 Android SDK 也能跑）
 
 ```bash
+npm run check:truth     # Java 语义门禁（queueId / 状态裸数字 / AGP·namespace / postDelayed 常量）
 npm run check:java      # 只用 javac 的语法检查，不依赖 SDK
 node scripts/docs-audit.js   # 定制符号 / 文档一致性
 ```
@@ -49,7 +50,9 @@ node scripts/docs-audit.js   # 定制符号 / 文档一致性
   `@Override` 报错、`DataSource.Factory` 目标类型缺失导致的 lambda 报错）→ 只计数，**不判红**；
 - **真正的语法错误**（`illegal start of expression`、`';' expected`、`class, interface, or enum expected` 等）→ 判红。
 
-它拦不住类型错误和语义错误——**真正的编译证据只有 CI**（App 的 Android job）。
+它拦不住类型错误和语义错误，所以另外补了 `check:truth`：四条语义门禁（queueId 必须走单调序列、
+播放状态禁止比裸数字、AGP 与 namespace 自洽、`postDelayed` 延时必须具名常量），末尾打印
+`📊 本次共执行 N 条门禁`，任何一条被删或跳过都会红。类型/编译证据仍然只有 CI（App 的 Android job）。
 变异验证：往临时目录塞 `int x = ;` 会返回 rc=1。
 
 ## ⚠️ V2 Migration Guide

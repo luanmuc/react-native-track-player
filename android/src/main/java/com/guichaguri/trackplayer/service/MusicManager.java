@@ -42,6 +42,9 @@ import com.guichaguri.trackplayer.service.player.LocalPlayback;
 @UnstableApi
 public class MusicManager {
 
+    /** 通话/其他 App 打断结束后，延迟多久恢复播放（避免刚结束时还处于听筒路由） */
+    private static final long INTERRUPT_RESUME_DELAY_MS = 500;
+
     private final MusicService service;
 
     private final WakeLock wakeLock;
@@ -91,7 +94,7 @@ public class MusicManager {
                             // 不是 media3 Player.STATE_READY(3)。原来的 != 3 在 BUFFERING/IDLE/ENDED 时也会误触发续播。
                             if (playback != null && hasAudioFocus && !userPausedDuringInterrupt
                                     && playback.getState() == PlaybackStateCompat.STATE_PAUSED) playback.play();
-                        }, 500); // 延迟 500ms 恢复，避免通话刚结束还在听筒状态
+                        }, INTERRUPT_RESUME_DELAY_MS); // 延迟恢复，避免通话刚结束还在听筒状态
                     }
                 }
                 break;

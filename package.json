@@ -13,7 +13,9 @@
     "preversion": "npm run lint",
     "version": "npm run format && git add -A src",
     "postversion": "node -e \"console.log('版本号已写入，请人工确认后执行: git push && git push --tags')\"",
-    "check:java": "node scripts/check-java-syntax.js"
+    "check:java": "node scripts/check-java-syntax.js",
+    "check:truth": "node scripts/check_truth_gates.js",
+    "check": "node scripts/check_truth_gates.js && node scripts/check-java-syntax.js"
   },
   "files": [
     "lib/**/*",
