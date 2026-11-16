@@ -122,8 +122,12 @@ public class MusicService extends HeadlessJsTaskService {
             return START_NOT_STICKY;
         }
 
-        manager = new MusicManager(this);
-        handler = new Handler();
+        // 每次 onStartCommand 都 new 会泄漏旧实例（旧 manager 只在 onDestroy 释放）。
+        // 判空复用：服务存活期内只保留一份 manager/handler。
+        if(manager == null) {
+            manager = new MusicManager(this);
+            handler = new Handler();
+        }
 
         super.onStartCommand(intent, flags, startId);
         return START_NOT_STICKY;

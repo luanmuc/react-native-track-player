@@ -10,6 +10,8 @@ import android.support.v4.media.MediaDescriptionCompat;
 import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat.QueueItem;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 import androidx.annotation.OptIn;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.util.UnstableApi;
@@ -42,6 +44,8 @@ import java.util.Map;
  */
 @UnstableApi
 public class Track extends TrackMetadata {
+    // 毫秒时间戳在批量 add 时会撞（同毫秒同 id），改成进程内单调自增
+    private static final AtomicLong QUEUE_ID_SEQ = new AtomicLong();
 
     public static List<Track> createTracks(Context context, List objects, int ratingType) {
         List<Track> tracks = new ArrayList<>();
@@ -102,7 +106,7 @@ public class Track extends TrackMetadata {
 
         setMetadata(context, bundle, ratingType);
 
-        queueId = System.currentTimeMillis();
+        queueId = QUEUE_ID_SEQ.incrementAndGet();
         originalItem = bundle;
     }
 
@@ -174,18 +178,37 @@ public class Track extends TrackMetadata {
 
         }
 
+        // N-1116：dash/hls/smoothstreaming 在 build.gradle 里默认 false，此时对应用只挂 compileOnly，
+        // 运行期类并不在 APK 里。这里先判类是否存在，缺失就降级成 progressive —— 原实现会直接
+        // NoClassDefFoundError，把整首歌打挂。
         switch(type) {
             case DASH:
-                return createDashSource(ds);
+                if (isClassAvailable("androidx.media3.exoplayer.dash.DashMediaSource")) return createDashSource(ds);
+                return createProgressiveSource(ds);
             case HLS:
-                return createHlsSource(ds);
+                if (isClassAvailable("androidx.media3.exoplayer.hls.HlsMediaSource")) return createHlsSource(ds);
+                return createProgressiveSource(ds);
             case SMOOTH_STREAMING:
-                return createSsSource(ds);
+                if (isClassAvailable("androidx.media3.exoplayer.smoothstreaming.SsMediaSource")) return createSsSource(ds);
+                return createProgressiveSource(ds);
             default:
-                return new ProgressiveMediaSource.Factory(ds, new DefaultExtractorsFactory()
-                        .setConstantBitrateSeekingEnabled(true))
-                        .createMediaSource(MediaItem.fromUri(uri));
+                return createProgressiveSource(ds);
         }
+    }
+
+    private static boolean isClassAvailable(String name) {
+        try {
+            Class.forName(name);
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
+    }
+
+    private MediaSource createProgressiveSource(DataSource.Factory factory) {
+        return new ProgressiveMediaSource.Factory(factory, new DefaultExtractorsFactory()
+                .setConstantBitrateSeekingEnabled(true))
+                .createMediaSource(MediaItem.fromUri(uri));
     }
 
     private MediaSource createDashSource(DataSource.Factory factory) {

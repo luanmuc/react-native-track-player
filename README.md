@@ -3,7 +3,7 @@
 > 本仓库是 [`doublesymmetry/react-native-track-player`](https://github.com/doublesymmetry/react-native-track-player) **v2（2.1.2 时代）的定制 fork**，供 [lx-music-mobile](https://github.com/luanmuc/mobile-app)（落雪音乐）使用。
 >
 > - **全部定制都在 `android/` 下的 Java 层**，清单见 [`FORK_NOTES.md`](./FORK_NOTES.md)（15 条 + 索引表）
-> - `package.json` 的 `version` 恒为 `2.1.2`，**靠 commit sha 区分版本**（App 侧用 `github:luanmuc/react-native-track-player#<sha>` 锁定）
+> - `package.json` 的 `version` 用 `2.1.2-lx.N` 标注 fork 内迭代（上游基线 2.1.2 不变），App 侧仍以 `github:luanmuc/react-native-track-player#<40 位 sha>` 锁定
 > - **不跟进上游**：官方 v2 分支已停止维护，最新 v5 把 Android 侧重写为 Kotlin，与本 fork 的定制面不兼容
 > - 下面的徽章、安装说明、Discord 链接等全部是**上游原文**，对本 fork 不适用
 >

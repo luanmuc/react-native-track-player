@@ -69,20 +69,34 @@ function rulePermission() {
   else report.push(`🔴 PLAYER_CONTROL 声明缺项（${cnt}/3：permission=${hasPerm} uses=${hasUse} service=${hasSvc}）——服务会对外裸奔或本 App 都调不进`);
 }
 
-// ── 规则 4：定制符号存在性（FORK_NOTES 文件索引逐个核）──────────────────
+// ── 规则 4：定制符号存在性（表格驱动，覆盖 FORK_NOTES 的主要定制面）──────────
+// 原实现只核 4 个符号（覆盖率 ~15%），等于「只守住了最早那批定制」。
+// 这里把可机器判定的定制符号按「符号 → 允许出现的文件」列成表；新增定制必须加行，
+// 否则 FORK_NOTES 与代码会静默漂移（G19）。
+const SYMBOLS = [
+  ['setNotificationRepeatMode', ['android/src/main/java/com/guichaguri/trackplayer/module/MusicModule.java', 'src/trackPlayer.ts']],
+  ['remote-cycle-repeat', ['android/src/main/java/com/guichaguri/trackplayer/module/MusicEvents.java', 'src/interfaces.ts']],
+  ['remote-toggle-desktop-lyric', ['android/src/main/java/com/guichaguri/trackplayer/module/MusicEvents.java', 'src/interfaces.ts']],
+  ['setLyricButtonActive', ['android/src/main/java/com/guichaguri/trackplayer/service/metadata/MetadataManager.java']],
+  ['lyricButtonActive', ['android/src/main/java/com/guichaguri/trackplayer/service/metadata/MetadataManager.java']],
+  ['userPausedDuringInterrupt', ['android/src/main/java/com/guichaguri/trackplayer/service/MusicManager.java']],
+  ['autoResumeAfterInterrupt', ['android/src/main/java/com/guichaguri/trackplayer/service/MusicManager.java', 'src/interfaces.ts']],
+  ['hasAudioFocus', ['android/src/main/java/com/guichaguri/trackplayer/service/MusicManager.java']],
+  ['QUEUE_ID_SEQ', ['android/src/main/java/com/guichaguri/trackplayer/service/models/Track.java']],
+  ['subSource', ['android/src/main/java/com/guichaguri/trackplayer/service/models/TrackMetadata.java', 'src/interfaces.ts']],
+  ['displayArtist', ['android/src/main/java/com/guichaguri/trackplayer/service/models/TrackMetadata.java']],
+  ['ACTION_TOGGLE_DESKTOP_LYRIC', ['android/src/main/java/com/guichaguri/trackplayer/service/MusicService.java', 'android/src/main/java/com/guichaguri/trackplayer/service/metadata/MetadataManager.java']],
+  ['ACTION_CYCLE_REPEAT', ['android/src/main/java/com/guichaguri/trackplayer/service/MusicService.java']],
+  ['ACTION_AUDIO_BECOMING_NOISY', ['android/src/main/java/com/guichaguri/trackplayer/service/MusicManager.java']],
+]
+
 function ruleSymbols() {
-  const checks = [
-    ['setNotificationRepeatMode', ['android/src/main/java/com/guichaguri/trackplayer/module/MusicModule.java', 'src/trackPlayer.ts']],
-    ['remote-cycle-repeat', ['android/src/main/java/com/guichaguri/trackplayer/module/MusicEvents.java', 'src/interfaces.ts']],
-    ['remote-toggle-desktop-lyric', ['android/src/main/java/com/guichaguri/trackplayer/module/MusicEvents.java', 'src/interfaces.ts']],
-    ['setLyricButtonActive', ['android/src/main/java/com/guichaguri/trackplayer/service/metadata/MetadataManager.java']],
-  ];
-  let bad = 0;
-  for (const [sym, files] of checks) {
-    const missing = files.filter(f => !fs.existsSync(path.join(ROOT, f)) || !read(f).includes(sym));
-    if (missing.length) { bad++; report.push(`🔴 定制符号 ${sym} 缺失于 ${missing.join('、')}`); }
+  let bad = 0
+  for (const [sym, files] of SYMBOLS) {
+    const missing = files.filter(f => !fs.existsSync(path.join(ROOT, f)) || !read(f).includes(sym))
+    if (missing.length) { bad++; report.push(`🔴 定制符号 ${sym} 缺失于 ${missing.join('、')}`) }
   }
-  if (!bad) report.push(`🟢 定制符号齐全：${checks.length} 个（FORK_NOTES 文件索引核对）`);
+  if (!bad) report.push(`🟢 定制符号齐全：${SYMBOLS.length} 个（表格驱动，${SYMBOLS.length} 个符号 × 允许文件清单）`)
 }
 
 ruleIconCount();

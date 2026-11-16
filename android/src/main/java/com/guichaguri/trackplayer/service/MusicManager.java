@@ -16,6 +16,7 @@ import android.media.AudioManager;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.WifiLock;
 import android.os.Bundle;
+import android.support.v4.media.session.PlaybackStateCompat;
 import android.os.Handler;
 import android.os.PowerManager;
 import android.os.PowerManager.WakeLock;
@@ -86,15 +87,18 @@ public class MusicManager {
                     if (autoResumeAfterInterrupt) {
                         new Handler().postDelayed(() -> {
                             // lx-music fork: 只有「仍在暂停 + 用户在打断期间没有主动暂停过」才恢复。
-                            // 只看 getState() != 3 不够：用户手动暂停后状态同样是 STATE_PAUSED(2)，会被误判为「等待恢复」。
-                            if (playback != null && hasAudioFocus && !userPausedDuringInterrupt && playback.getState() != 3) playback.play();
+                            // 注意两套常量同名不同值：getState() 返回的是 PlaybackStateCompat（PLAYING=3、PAUSED=2），
+                            // 不是 media3 Player.STATE_READY(3)。原来的 != 3 在 BUFFERING/IDLE/ENDED 时也会误触发续播。
+                            if (playback != null && hasAudioFocus && !userPausedDuringInterrupt
+                                    && playback.getState() == PlaybackStateCompat.STATE_PAUSED) playback.play();
                         }, 500); // 延迟 500ms 恢复，避免通话刚结束还在听筒状态
                     }
                 }
                 break;
             case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
                 // 短暂丢失（来电/其他 App 临时播放）：暂停播放，记录状态
-                wasPlayingBeforeTransientLoss = playback.getState() == 3; // STATE_PLAYING = 3
+                // 同一份状态常量：这里读的是 PlaybackStateCompat（PLAYING=3），不是 media3 Player.STATE_READY
+                wasPlayingBeforeTransientLoss = playback.getState() == PlaybackStateCompat.STATE_PLAYING;
                 userPausedDuringInterrupt = false; // 新一轮打断，重置「用户主动暂停」标记
                 playback.pause();
                 break;

@@ -15,6 +15,21 @@
 
 ## 定制清单
 
+### 审计包修复（2026-11-16）
+
+- `Track.queueId`：由 `System.currentTimeMillis()` 改为进程内 `AtomicLong` 自增 —— 批量 add 同一毫秒会产生重复 `queueId`，通知栏/队列项 的 id 会撞。
+- `MusicService.onStartCommand`：`manager` / `handler` 改为判空复用 —— 原实现每次 start 都 `new MusicManager`，旧实例要到 `onDestroy` 才释放，多次 start 会泄漏（音符/播放器各持一份）。
+- `MusicManager` 音频焦点恢复条件：`getState() != 3` → `getState() == PlaybackStateCompat.STATE_PAUSED` —— 两套常量同名不同值（`PlaybackStateCompat.PLAYING=3` vs media3 `Player.STATE_READY=3`），原写法在 `BUFFERING/IDLE/ENDED` 时也会误续播；只在「确实还在暂停」时恢复，与注释意图一致。
+- `MetadataManager.setLyricButtonActive` / `setRepeatMode` 的 `getState() == 3` 同样换成 `PlaybackStateCompat.STATE_PLAYING`（同一类魔法数，三处一起清）。
+- `ExoPlayback.lastKnownPosition`：`C.INDEX_UNSET`（int -1）→ `-1L` —— 明确 long 类型意图，避免 `-1` 被当合法位置的歧义。
+- `package.json` 的 `postversion` 不再自动 `git push && git push --tags`，改为提示人工确认（`npm version` 曾会把版本提交直接推到远端）。
+- `android/build.gradle`：`track-player.json` 机制恢复（原被整段注释，文档却还在教用户配）；默认仍 `dash/hls/smoothstreaming=false`，只有配置文件存在才覆盖。
+- `Track` 的 dash/hls/smoothstreaming 分支加 `Class.forName` 可用性判断，缺失时降级 progressive（此前 `compileOnly` 依赖在关闭态下会 `NoClassDefFoundError`）。
+- `android/build.gradle` 的 AGP 由 `7.0.4` 对齐到消费方 App 的 `8.6.1`（7.0.4 不支持 `namespace` DSL，独立构建会直接失败）。
+- `package.json` 版本改为 `2.1.2-lx.N`（不再恒等 2.1.2），仍以 commit sha 作为 App 侧锁定依据。
+
+> 以上均为 Java 侧改动，本机无 Android SDK，**只做静态复查，未编译**。可编译环境需补跑 `./gradlew assembleRelease`。
+
 ### 音频焦点（B54 基线 `01f34b15`）
 
 - `requestAudioFocus` 加幂等：原实现每次播放都重复请求，焦点栈累积会触发系统下发 `LOSS`，`stop()` 把刚开始的播放打断，表现为点播放一直停在缓冲态

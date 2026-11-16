@@ -53,7 +53,8 @@ public abstract class ExoPlayback<T extends Player> implements Player.Listener, 
 
     // https://github.com/google/ExoPlayer/issues/2728
     protected int lastKnownWindow = C.INDEX_UNSET;
-    protected long lastKnownPosition = C.INDEX_UNSET;
+    // C.INDEX_UNSET 是 int -1，赋给 long 会被隐式提升；写 -1L 让类型意图明确（-1 也是合法位置值）
+    protected long lastKnownPosition = -1L;
     protected int previousState = PlaybackStateCompat.STATE_NONE;
     protected float volumeMultiplier = 1.0F;
     protected boolean autoUpdateMetadata;

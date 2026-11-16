@@ -1,6 +1,6 @@
 {
   "name": "react-native-track-player",
-  "version": "2.1.2",
+  "version": "2.1.2-lx.1",
   "description": "A fully fledged audio module created for music apps",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -12,7 +12,7 @@
     "prepublishOnly": "npm run lint",
     "preversion": "npm run lint",
     "version": "npm run format && git add -A src",
-    "postversion": "git push && git push --tags"
+    "postversion": "node -e \"console.log('版本号已写入，请人工确认后执行: git push && git push --tags')\""
   },
   "files": [
     "lib/**/*",

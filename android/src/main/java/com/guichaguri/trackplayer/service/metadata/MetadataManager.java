@@ -290,7 +290,7 @@ public class MetadataManager {
       // 直接 deref 会 NullPointerException 把主线程崩掉；状态已记录，等播放器初始化后随通知一起生效
       ExoPlayback playback = manager.getPlayback();
       if (playback == null) return;
-      updatePlayback(playback, playback.getState() == 3);
+      updatePlayback(playback, playback.getState() == PlaybackStateCompat.STATE_PLAYING);
     }
 
     public void setRepeatMode(int mode) {
@@ -300,7 +300,7 @@ public class MetadataManager {
       // 此时 manager.getPlayback() 为 null，必须判空（b68 关开关后打不开的直接原因）
       ExoPlayback playback = manager.getPlayback();
       if (playback == null) return;
-      updatePlayback(playback, playback.getState() == 3);
+      updatePlayback(playback, playback.getState() == PlaybackStateCompat.STATE_PLAYING);
     }
 
     /**
