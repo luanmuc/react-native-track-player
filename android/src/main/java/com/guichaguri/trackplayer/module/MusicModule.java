@@ -464,6 +464,11 @@ public class MusicModule extends ReactContextBaseJavaModule implements ServiceCo
     }
 
     @ReactMethod
+    public void getAudioSessionId(final Promise callback) {
+        waitForConnection(() -> callback.resolve(binder.getPlayback().getAudioSessionId()));
+    }
+
+    @ReactMethod
     public void setRepeatMode(int mode, final Promise callback) {
         waitForConnection(() -> {
             binder.getPlayback().setRepeatMode(mode);

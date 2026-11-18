@@ -1,3 +1,9 @@
+## 音高 + audioSessionId 桥方法（2026-11-18）
+
+- 新增 `setPitch(float)` / `getPitch()`：ExoPlayer `PlaybackParameters` 的音高维度，speed 与 pitch 各自保留对方当前值。
+- 新增 `getAudioSessionId()`：供系统 AudioEffect（均衡器）挂载；`Player` 接口无此方法，`ExoPlayer` 有。
+- `MusicModule` 暴露三者；JS 层同构导出。
+
 ## b9ecdab2 + 音高桥方法（2026-11-18）
 
 - 新增 `setPitch(float)` / `getPitch()`：ExoPlayer `PlaybackParameters` 的音高维度，speed 与 pitch 各自保留对方当前值。

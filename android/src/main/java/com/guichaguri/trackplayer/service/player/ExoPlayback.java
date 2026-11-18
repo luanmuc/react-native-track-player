@@ -25,6 +25,7 @@ import androidx.media3.common.Metadata;
 import androidx.media3.common.TrackGroup;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.datasource.HttpDataSource;
+import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.ExoPlaybackException;
 import androidx.media3.exoplayer.metadata.MetadataOutput;
 
@@ -265,6 +266,16 @@ public abstract class ExoPlayback<T extends Player> implements Player.Listener, 
 
     public void setPitch(float pitch) {
         player.setPlaybackParameters(new PlaybackParameters(player.getPlaybackParameters().speed, pitch));
+    }
+
+    /**
+     * 音频会话 ID。系统 AudioEffect（如均衡器）必须挂在这个会话上才生效。
+     * media3 的 Player 接口没有该方法，只有 ExoPlayer 有 → 类型判断后调用；
+     * 返回 0（C.AUDIO_SESSION_ID_UNSET）表示会话尚未建立（未起播）。
+     */
+    public int getAudioSessionId() {
+        if (player instanceof ExoPlayer) return ((ExoPlayer) player).getAudioSessionId();
+        return C.AUDIO_SESSION_ID_UNSET;
     }
 
     public int getState() {

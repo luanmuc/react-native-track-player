@@ -15,6 +15,14 @@
 
 ## 定制清单
 
+### audioSessionId 桥方法（b161 需求，`4e2cb01` 之后新增）
+
+- `ExoPlayback.getAudioSessionId()`：media3 的 `Player` 接口没有此方法，只有 `ExoPlayer` 有 → `instanceof` 判断后调用；未建立会话返回 `C.AUDIO_SESSION_ID_UNSET`（0）。
+- `MusicModule.getAudioSessionId` 走 `waitForConnection`。
+- 用途：App 侧系统均衡器（`android.media.audiofx.Equalizer`）必须挂在这个会话上才生效。
+- **验证方式**：用真实 media3 1.8.0 aar + android.jar 35 对方法体逐字复刻做 javac 编译探针（RC=0），不是「看着像对」。
+
+
 ### 音高桥方法（b160 需求，`b9ecdab2` 之后新增）
 
 - `ExoPlayback` 新增 `getPitch()` / `setPitch(float)`：`PlaybackParameters` 的 speed 与 pitch 是两个独立维度，`setPitch` 必须沿用当前 speed、`setRate` 必须沿用当前 pitch，否则单纯调音高会把语速设置抹掉（反之亦然）。

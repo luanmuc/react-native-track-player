@@ -215,6 +215,11 @@ async function getVolume(): Promise<number> {
   return TrackPlayer.getVolume()
 }
 
+async function getAudioSessionId(): Promise<number> {
+  if (!isSetupedPlayer) return Promise.resolve(0)
+  return TrackPlayer.getAudioSessionId()
+}
+
 async function getPitch(): Promise<number> {
   if (!isSetupedPlayer) return Promise.resolve(1)
   return TrackPlayer.getPitch()
@@ -319,6 +324,7 @@ export default {
   getRate,
   setPitch,
   getPitch,
+  getAudioSessionId,
   getTrack,
   getQueue,
   getCurrentTrack,
