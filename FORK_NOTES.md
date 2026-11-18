@@ -7,13 +7,21 @@
 ## 分支与基线
 
 - 开发分支：`v2`
-- App 侧当前锁定的 commit：`82e4e21`（b78 起从 `eceacb5` 升上来，取的是本 fork 2026-11-07 全覆盖审计的修复：焦点续播不覆盖用户暂停、`contentIntent` 补 `FLAG_IMMUTABLE`、服务挂 `PLAYER_CONTROL` 权限、耳机拔出复位音量、归口注释补齐。`eceacb5` 是更早的 b75 基线，本身只追加了 `quality` / `subSource` 两个可选类型字段、未改定制逻辑）
+- App 侧当前锁定的 commit：`b9ecdab2`（b158 起从 `82e4e21` 升上来；`b9ecdab2` 含音频焦点 B 方案状态机。音高桥方法在 `536521c`，App 侧尚未锁到它——`setPlaybackPitch` 对旧 sha 有存在性守卫，装 `b9ecdab2` 时静默跳过、不崩；锁定 `536521c` 后自动生效。更早的 `82e4e21`（b78 起）从 `eceacb5` 升上来，取的是本 fork 2026-11-07 全覆盖审计的修复：焦点续播不覆盖用户暂停、`contentIntent` 补 `FLAG_IMMUTABLE`、服务挂 `PLAYER_CONTROL` 权限、耳机拔出复位音量、归口注释补齐。`eceacb5` 是更早的 b75 基线，本身只追加了 `quality` / `subSource` 两个可选类型字段、未改定制逻辑）
 - 本文件里其余各条后面的短 sha 是**该条定制落地时的历史提交**，不是当前基线，改动时以本条为准
 
 > 上游官方已不再维护 `v2` 分支（最新为 v5，Android 侧已重写为 Kotlin）。
 > 因此本 fork **不做上游跟进**：任何上游变更都要按本文件的定制清单逐条重放，无法直接 merge。
 
 ## 定制清单
+
+### 音高桥方法（b160 需求，`b9ecdab2` 之后新增）
+
+- `ExoPlayback` 新增 `getPitch()` / `setPitch(float)`：`PlaybackParameters` 的 speed 与 pitch 是两个独立维度，`setPitch` 必须沿用当前 speed、`setRate` 必须沿用当前 pitch，否则单纯调音高会把语速设置抹掉（反之亦然）。
+- `MusicModule` 新增 `@ReactMethod setPitch` / `getPitch`，走 `waitForConnection`（连接前调用会被排队，不会写空内核）。
+- JS 层 `src/trackPlayer.ts` 新增 `setPitch` / `getPitch`，与 `setRate` 同构（`isSetupedPlayer` 未就绪时早退）。
+- 上游 npm 版（2.1.2）没有这几个方法，App 侧 `setPlaybackPitch` 对 `setPitch` 做了**存在性守卫**：装旧包时静默跳过、不崩；装本 fork 后自动生效。
+
 
 ### 审计包修复（2026-11-16）
 

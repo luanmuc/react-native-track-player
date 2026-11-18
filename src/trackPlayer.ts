@@ -200,6 +200,11 @@ async function setRate(rate: number): Promise<void> {
   return TrackPlayer.setRate(rate)
 }
 
+async function setPitch(pitch: number): Promise<void> {
+  if (!isSetupedPlayer) return Promise.resolve()
+  return TrackPlayer.setPitch(pitch)
+}
+
 async function setRepeatMode(mode: RepeatMode): Promise<RepeatMode> {
   return TrackPlayer.setRepeatMode(mode)
 }
@@ -208,6 +213,11 @@ async function setRepeatMode(mode: RepeatMode): Promise<RepeatMode> {
 
 async function getVolume(): Promise<number> {
   return TrackPlayer.getVolume()
+}
+
+async function getPitch(): Promise<number> {
+  if (!isSetupedPlayer) return Promise.resolve(1)
+  return TrackPlayer.getPitch()
 }
 
 async function getRate(): Promise<number> {
@@ -307,6 +317,8 @@ export default {
   // MARK: - Getters
   getVolume,
   getRate,
+  setPitch,
+  getPitch,
   getTrack,
   getQueue,
   getCurrentTrack,

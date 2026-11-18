@@ -254,6 +254,19 @@ public abstract class ExoPlayback<T extends Player> implements Player.Listener, 
         player.setPlaybackParameters(new PlaybackParameters(rate, player.getPlaybackParameters().pitch));
     }
 
+    /**
+     * 音高（pitch）与速率（speed）是 ExoPlayer {@link PlaybackParameters} 的两个独立维度。
+     * 单独调音高必须沿用当前 speed，否则会把变速设置抹掉；反之 setRate 亦然。
+     * 本方法为 lx 定制新增（上游 rntp 无此能力）。
+     */
+    public float getPitch() {
+        return player.getPlaybackParameters().pitch;
+    }
+
+    public void setPitch(float pitch) {
+        player.setPlaybackParameters(new PlaybackParameters(player.getPlaybackParameters().speed, pitch));
+    }
+
     public int getState() {
         switch(player.getPlaybackState()) {
             case Player.STATE_BUFFERING:

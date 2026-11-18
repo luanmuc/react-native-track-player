@@ -451,6 +451,19 @@ public class MusicModule extends ReactContextBaseJavaModule implements ServiceCo
     }
 
     @ReactMethod
+    public void setPitch(final float pitch, final Promise callback) {
+        waitForConnection(() -> {
+            binder.getPlayback().setPitch(pitch);
+            callback.resolve(null);
+        });
+    }
+
+    @ReactMethod
+    public void getPitch(final Promise callback) {
+        waitForConnection(() -> callback.resolve(binder.getPlayback().getPitch()));
+    }
+
+    @ReactMethod
     public void setRepeatMode(int mode, final Promise callback) {
         waitForConnection(() -> {
             binder.getPlayback().setRepeatMode(mode);

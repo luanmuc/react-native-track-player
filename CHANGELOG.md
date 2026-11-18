@@ -1,3 +1,8 @@
+## b9ecdab2 + 音高桥方法（2026-11-18）
+
+- 新增 `setPitch(float)` / `getPitch()`：ExoPlayer `PlaybackParameters` 的音高维度，speed 与 pitch 各自保留对方当前值。
+- `MusicModule` 暴露 `setPitch` / `getPitch`；JS 层同构导出。
+
 ## 2026-11-16 · 恢复语义门禁（check:truth）+ 打断恢复延时抽常量
 
 - 新增 `scripts/check_truth_gates.js`：4 条 Java 语义门禁（queueId 单调序列 / 播放状态禁止裸数字比较 /
