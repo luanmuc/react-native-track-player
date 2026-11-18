@@ -38,6 +38,23 @@
 - 打断结束的自动续播**不得覆盖用户的主动暂停**（`userPausedDuringInterrupt`）：只看 `getState()` 区分不出「系统打断暂停」和「用户按了暂停」，两者都是 `STATE_PAUSED(2)`，旧写法会让用户刚按暂停、通话一结束音乐又响起来。用户暂停统一走 `MusicManager.pauseByUser()`
 - 拔耳机（`ACTION_AUDIO_BECOMING_NOISY`）除了暂停，还要**先复位鸭子音量**，否则拔线前若正在压低，音量会一直停在 20%；同时按「用户主动暂停」记录，避免打断结束时从扬声器外放
 
+### 音频焦点状态机（B 方案，2026-11-18）
+
+把「打断前是什么样」从两个布尔升级成显式状态机，原因是单布尔表达不了交叉态：缓冲中被打断、连续两次打断、打断期间用户改音量、通话中拔耳机——这些在旧实现里分别表现为"不续播/续播丢失/音量被旧值覆盖/挂断外放"。
+
+- 新增 `service/focus/AudioFocusPolicy.java`：**零 Android 依赖**的纯逻辑类，输入「事件 + 播放器快照」，输出**动作列表**；4 个焦点回调、用户暂停/播放/改音量、拔线、销毁全部走它。
+- `MusicManager` 退化为采集与执行：`dispatch(event)` → `execute(actions)`，不再自己判断要不要续播。
+- 修掉的 6 条：
+  - **R1** `onPlay` 不再"焦点申请失败也照播"（`requestAudioFocus` 返回 boolean，失败走 `FOCUS_DENIED` → 暂停 + 告警日志）；
+  - **R2** 续播欠账改**累积**（`resumePending |= 意图在播`），连续两次打断不再丢；
+  - **R3** "意图在播"包含 `BUFFERING/CONNECTING` 与 `playWhenReady`，缓冲中被打断也能续播；
+  - **R4** 永久丢失的动作顺序改为**先 PAUSE 再 ABANDON**；
+  - **R5** `destroy()` 补 `SERVICE_DESTROY`（释放焦点 + 复位状态），原来这段是注释掉的；
+  - **R6** 用户改音量走 `MusicManager.setUserVolume()` → 策略清掉"鸭子待恢复"，GAIN 不再用旧值覆盖。
+- 另外两条策略级修正：`CAN_DUCK` 只在**真正在播**时才改音量（暂停态收到 CAN_DUCK 不再把音量改成 20% 卡住）；鸭子目标改**比例**（`音量×0.25`）而非绝对 `0.2`。
+- `onPause()` 不再注销 `noisyReceiver`（注销统一放 `onStop`/`destroy`），否则通话中拔耳机没人拦，挂断续播会从扬声器外放。
+- 门禁：`scripts/check_audio_focus_policy.js` —— javac 编译「策略类 + 场景 runner」后跑断言，覆盖主路径、R1~R6、连续打断、鸭子中被打断、拔线、销毁复位、两个子开关，共 **28 条**；静态断言禁止策略类引入 `android.*` 与裸数字状态比较。
+
 ### 通知栏基础参数（`01f34b15`）
 
 - `quality` / `subSource` 在 track bundle 中被读取并注入通知栏，此前 Java 侧恒为 `null`

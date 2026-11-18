@@ -86,6 +86,11 @@ public class MusicBinder extends Binder {
       manager.pauseByUser();
     }
 
+    // lx-music fork: 用户改音量统一走 manager.setUserVolume()，让策略知道音量已被用户接管
+    public void setUserVolume(float volume) {
+        manager.setUserVolume(volume);
+    }
+
     public int getRatingType() {
         return manager.getMetadata().getRatingType();
     }

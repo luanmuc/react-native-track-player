@@ -22,6 +22,8 @@ import android.os.PowerManager;
 import android.os.PowerManager.WakeLock;
 import android.util.Log;
 
+import com.guichaguri.trackplayer.service.focus.AudioFocusPolicy;
+
 import androidx.media3.common.C;
 import androidx.media3.common.TrackSelectionParameters;
 import androidx.media3.common.util.UnstableApi;
@@ -42,9 +44,6 @@ import com.guichaguri.trackplayer.service.player.LocalPlayback;
 @UnstableApi
 public class MusicManager {
 
-    /** 通话/其他 App 打断结束后，延迟多久恢复播放（避免刚结束时还处于听筒路由） */
-    private static final long INTERRUPT_RESUME_DELAY_MS = 500;
-
     private final MusicService service;
 
     private final WakeLock wakeLock;
@@ -60,71 +59,30 @@ public class MusicManager {
     // 否则两套管理器会互相下发 LOSS，把刚开始的播放打断（b53 点播放一直缓冲的直接原因）
     private boolean handleAudioFocus = true;
     private boolean hasAudioFocus = false;
-    private boolean wasDucking = false;
-    private boolean wasPlayingBeforeTransientLoss = false;
-    // lx-music fork: 打断期间用户是否主动暂停过。
-    // 无法用 getState() 区分「被系统打断而暂停」和「用户自己按的暂停」，两者都是 STATE_PAUSED，
-    // 只靠状态判断会让打断结束后的自动续播把用户的暂停撤销掉（用户刚按暂停，通话结束音乐又响）。
-    private boolean userPausedDuringInterrupt = false;
-    // lx-music fork: 两个子行为开关（仅在 handleAudioFocus 为 true 时才有意义）
+    // lx-music fork（B 方案）：焦点恢复决策全部交给纯逻辑状态机 AudioFocusPolicy，
+    // 本类只负责「采集播放器快照 → 把事件喂给策略 → 执行返回的动作」。
+    // 这样 4 个焦点回调 × 播放器 5 个状态 × 用户 3 个开关的交叉态才能在 JVM 上穷举验证。
+    private final AudioFocusPolicy focusPolicy = new AudioFocusPolicy();
+    // 两个子行为开关（仅在 handleAudioFocus 为 true 时才有意义）
     private boolean autoResumeAfterInterrupt = true;   // 临时打断结束后是否自动续播
     private boolean duckOnTransientDuck = true;        // CAN_DUCK 时是否降低音量
-    private final float duckVolume = 0.2f;
-    // 压低前的实际音量（用户可能在 App 里把音量调到 60%），恢复时必须还原成这个值，
-    // 不能写死 1.0，否则导航播报结束后音乐直接跳到 100%
-    private float volumeBeforeDuck = 1.0f;
 
     private final AudioManager.OnAudioFocusChangeListener audioFocusListener = focusChange -> {
         if (playback == null || !handleAudioFocus) return;
         switch (focusChange) {
             case AudioManager.AUDIOFOCUS_GAIN:
-                // 重新获得焦点：恢复音量 + 恢复播放
-                hasAudioFocus = true;
-                if (wasDucking) {
-                    playback.setVolume(volumeBeforeDuck);
-                    wasDucking = false;
-                }
-                if (wasPlayingBeforeTransientLoss) {
-                    wasPlayingBeforeTransientLoss = false;
-                    // 关闭「打断结束后自动续播」时保持暂停，等用户手动点播放
-                    if (autoResumeAfterInterrupt) {
-                        new Handler().postDelayed(() -> {
-                            // lx-music fork: 只有「仍在暂停 + 用户在打断期间没有主动暂停过」才恢复。
-                            // 注意两套常量同名不同值：getState() 返回的是 PlaybackStateCompat（PLAYING=3、PAUSED=2），
-                            // 不是 media3 Player.STATE_READY(3)。原来的 != 3 在 BUFFERING/IDLE/ENDED 时也会误触发续播。
-                            if (playback != null && hasAudioFocus && !userPausedDuringInterrupt
-                                    && playback.getState() == PlaybackStateCompat.STATE_PAUSED) playback.play();
-                        }, INTERRUPT_RESUME_DELAY_MS); // 延迟恢复，避免通话刚结束还在听筒状态
-                    }
-                }
+                dispatch(AudioFocusPolicy.Event.GAIN);
                 break;
             case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
-                // 短暂丢失（来电/其他 App 临时播放）：暂停播放，记录状态
-                // 同一份状态常量：这里读的是 PlaybackStateCompat（PLAYING=3），不是 media3 Player.STATE_READY
-                wasPlayingBeforeTransientLoss = playback.getState() == PlaybackStateCompat.STATE_PLAYING;
-                userPausedDuringInterrupt = false; // 新一轮打断，重置「用户主动暂停」标记
-                playback.pause();
+                dispatch(AudioFocusPolicy.Event.LOSS_TRANSIENT);
                 break;
             case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK:
-                // 可压低（导航播报等）：降音量到 20%
-                // 关闭「降音量」开关时忽略该请求，保持原音量（导航音会直接盖在音乐上）
-                if (!duckOnTransientDuck) break;
-                wasDucking = true;
-                volumeBeforeDuck = playback.getVolume(); // 记住用户当前音量，恢复时还原这个值
-                playback.setVolume(duckVolume);
+                dispatch(AudioFocusPolicy.Event.LOSS_CAN_DUCK);
                 break;
             case AudioManager.AUDIOFOCUS_LOSS:
-                // 永久丢失：暂停（保留进度），复位音量后释放焦点
-                // 旧实现用 stop()，ExoPlayback.stop() 内含 seekTo(0)，进度直接归零；
-                // 且 stop 后 player 音量仍是鸭子音量 0.2，下次播放声音异常小
-                wasPlayingBeforeTransientLoss = false;
-                userPausedDuringInterrupt = false;
-                if (wasDucking) {
-                    playback.setVolume(volumeBeforeDuck);
-                    wasDucking = false;
-                }
-                abandonAudioFocus();
-                playback.pause();
+                dispatch(AudioFocusPolicy.Event.LOSS_PERMANENT);
+                break;
+            default:
                 break;
         }
     };
@@ -132,18 +90,8 @@ public class MusicManager {
     private final BroadcastReceiver noisyReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            // lx-music fork: 耳机拔线直接暂停，不依赖 JS 响应
-            ExoPlayback pb = playback;
-            if (pb == null) return;
-            // lx-music fork: 先复位鸭子音量，否则拔线前若处于压低状态（0.2），音量会一直停在 20%
-            if (wasDucking) {
-                pb.setVolume(volumeBeforeDuck);
-                wasDucking = false;
-            }
-            // lx-music fork: 拔线视为用户主动暂停。若此时正处于焦点打断，标记住，
-            // 否则打断结束的自动续播会让音乐从扬声器外放
-            if (wasPlayingBeforeTransientLoss) userPausedDuringInterrupt = true;
-            pb.pause();
+            // lx-music fork: 耳机拔线/蓝牙断开交给策略处理（复位压低音量 + 明确不续播，避免挂断电话后外放）
+            dispatch(AudioFocusPolicy.Event.NOISY_DISCONNECTED);
             service.emit(MusicEvents.BUTTON_PAUSE, null);
         }
     };
@@ -154,17 +102,78 @@ public class MusicManager {
      * 先标记住，避免这期间恰好收到 AUDIOFOCUS_GAIN 被自动续播抢先。
      */
     public void markUserPaused() {
-        if (wasPlayingBeforeTransientLoss) userPausedDuringInterrupt = true;
+        dispatch(AudioFocusPolicy.Event.USER_PAUSE);
     }
 
     /**
-     * lx-music fork: 用户主动暂停的统一入口（JS/通知栏按钮/拔耳机都走这里）。
-     * 目的：让「打断结束后自动续播」能区分「系统把播放暂停了」和「用户自己按了暂停」。
+     * lx-music fork: 用户主动暂停的统一入口（JS / 通知栏按钮走这里）。
+     * 让「打断结束后自动续播」能区分「系统把播放暂停了」和「用户自己按了暂停」。
      */
     public void pauseByUser() {
-        markUserPaused();
+        dispatch(AudioFocusPolicy.Event.USER_PAUSE);
         ExoPlayback pb = getPlayback();
         if (pb != null) pb.pause();
+    }
+
+    /**
+     * lx-music fork: 用户主动改音量（替代 MusicModule 里直接 setVolume）。
+     * 目的：让策略知道「音量已被用户接管」，避免打断结束的 GAIN 用旧值覆盖用户新调的音量。
+     */
+    public void setUserVolume(float volume) {
+        dispatch(AudioFocusPolicy.Event.USER_VOLUME);
+        ExoPlayback pb = getPlayback();
+        if (pb != null) pb.setVolume(volume);
+    }
+
+    /** 采集播放器快照；playback 为空时给一个"什么都不是"的安全快照 */
+    private AudioFocusPolicy.Snapshot snapshot() {
+        ExoPlayback pb = playback;
+        if (pb == null) return new AudioFocusPolicy.Snapshot(AudioFocusPolicy.PS_NONE, false, false, 1f);
+        return new AudioFocusPolicy.Snapshot(pb.getState(), pb.getPlayWhenReady(), pb.isPlayingNow(), pb.getVolume());
+    }
+
+    /** 事件入口：开关关闭时完全不接管；每次同步两个子开关（改设置后无需重建策略） */
+    private void dispatch(AudioFocusPolicy.Event event) {
+        if (!handleAudioFocus) return;
+        focusPolicy.configure(autoResumeAfterInterrupt, duckOnTransientDuck);
+        execute(focusPolicy.handle(event, snapshot()));
+    }
+
+    /** 执行策略返回的动作（顺序敏感：永久丢失要求"先暂停再释放焦点"） */
+    private void execute(java.util.List<AudioFocusPolicy.Action> actions) {
+        ExoPlayback pb = playback;
+        for (AudioFocusPolicy.Action action : actions) {
+            switch (action.type) {
+                case AudioFocusPolicy.A_PAUSE:
+                    if (pb != null) pb.pause();
+                    break;
+                case AudioFocusPolicy.A_PLAY:
+                    if (pb != null) pb.play();
+                    break;
+                case AudioFocusPolicy.A_SET_VOLUME:
+                    if (pb != null) pb.setVolume(action.volume);
+                    break;
+                case AudioFocusPolicy.A_REQUEST_FOCUS:
+                    requestAudioFocus();
+                    break;
+                case AudioFocusPolicy.A_ABANDON_FOCUS:
+                    abandonAudioFocus();
+                    break;
+                case AudioFocusPolicy.A_SCHEDULE_RESUME:
+                    getHandler().postDelayed(() -> {
+                        // 到点时复核三件事：仍持有焦点、策略仍认为该恢复（期间用户没干预）、播放器仍在暂停态
+                        if (playback != null && hasAudioFocus
+                                && focusPolicy.getPhase() == AudioFocusPolicy.Phase.NORMAL
+                                && playback.getState() == PlaybackStateCompat.STATE_PAUSED) playback.play();
+                    }, action.delayMs);
+                    break;
+                case AudioFocusPolicy.A_NOTIFY_FOCUS_DENIED:
+                    Log.w(Utils.LOG, "audio focus denied while playing, pause instead");
+                    break;
+                default:
+                    break;
+            }
+        }
     }
 
     private boolean receivingNoisyEvents = false;
@@ -196,18 +205,19 @@ public class MusicManager {
     }
 
     // lx-music fork: 音频焦点请求/释放
-    private void requestAudioFocus() {
-        if (!handleAudioFocus) return; // 用户关掉「音频焦点处理」时完全不接管
+    private boolean requestAudioFocus() {
+        if (!handleAudioFocus) return true; // 用户关掉「音频焦点处理」时完全不接管，也不拦播放
         // 已有焦点时直接返回（v1.9.2-b54）：旧实现每次 onPlay 都重复请求，
         // 焦点栈累积会触发系统下发 LOSS，配合下面的 stop() 会把刚开始的播放打断，
         // 表现为「点播放一直卡在加载态」
-        if (hasAudioFocus) return;
+        if (hasAudioFocus) return true;
         int result = audioManager.requestAudioFocus(
             audioFocusListener,
             AudioManager.STREAM_MUSIC,
             AudioManager.AUDIOFOCUS_GAIN
         );
         hasAudioFocus = (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED);
+        return hasAudioFocus;
     }
 
     private void abandonAudioFocus() {
@@ -318,7 +328,8 @@ public class MusicManager {
         if(track == null) return;
 
         if(!playback.isRemote()) {
-            requestAudioFocus(); // lx-music fork: 请求音频焦点
+            // lx-music fork: 焦点申请失败（通话中/其他 App 持有）时不能「没焦点也照播」
+            if (!requestAudioFocus()) dispatch(AudioFocusPolicy.Event.FOCUS_DENIED);
 
             if(!receivingNoisyEvents) {
                 receivingNoisyEvents = true;
@@ -339,11 +350,9 @@ public class MusicManager {
     public void onPause() {
         Log.d(Utils.LOG, "onPause");
 
-        // Unregisters the noisy receiver
-        if(receivingNoisyEvents) {
-            service.unregisterReceiver(noisyReceiver);
-            receivingNoisyEvents = false;
-        }
+        // lx-music fork: 这里**不注销** noisyReceiver。暂停期间（尤其被焦点打断的暂停）仍要能收到
+        // 拔耳机/断蓝牙广播，否则通话中拔线再挂断，音乐会被自动续播从扬声器外放出去。
+        // 注销统一放在 onStop / destroy。
 
         // Release the wake and the wifi locks
         if(wakeLock.isHeld()) wakeLock.release();
@@ -545,8 +554,8 @@ public class MusicManager {
     public void destroy() {
         Log.d(Utils.LOG, "Releasing service resources...");
 
-        // Disable audio focus
-        // abandonFocus();
+        // lx-music fork: 销毁前释放焦点并复位策略状态（原来这段是注释掉的，Service 重建后会带脏状态）
+        dispatch(AudioFocusPolicy.Event.SERVICE_DESTROY);
 
         // Stop receiving audio becoming noisy events
         if(receivingNoisyEvents) {

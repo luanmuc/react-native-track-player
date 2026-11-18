@@ -427,7 +427,7 @@ public class MusicModule extends ReactContextBaseJavaModule implements ServiceCo
     @ReactMethod
     public void setVolume(final float volume, final Promise callback) {
         waitForConnection(() -> {
-            binder.getPlayback().setVolume(volume);
+            binder.setUserVolume(volume);
             callback.resolve(null);
         });
     }

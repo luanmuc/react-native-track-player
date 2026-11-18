@@ -15,7 +15,7 @@
     "postversion": "node -e \"console.log('版本号已写入，请人工确认后执行: git push && git push --tags')\"",
     "check:java": "node scripts/check-java-syntax.js",
     "check:truth": "node scripts/check_truth_gates.js",
-    "check": "node scripts/check_truth_gates.js && node scripts/check-java-syntax.js"
+    "check": "node scripts/check_truth_gates.js && node scripts/check-java-syntax.js && node scripts/check_audio_focus_policy.js"
   },
   "files": [
     "lib/**/*",

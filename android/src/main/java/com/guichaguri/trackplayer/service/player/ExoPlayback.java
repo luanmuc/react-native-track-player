@@ -219,6 +219,16 @@ public abstract class ExoPlayback<T extends Player> implements Player.Listener, 
         player.seekTo(time);
     }
 
+    /** lx-music fork: 供 AudioFocusPolicy 采集快照——用户意图是否是播放（缓冲中也算） */
+    public boolean getPlayWhenReady() {
+        return player.getPlayWhenReady();
+    }
+
+    /** lx-music fork: 供 AudioFocusPolicy 采集快照——当前是否真的在出声音 */
+    public boolean isPlayingNow() {
+        return player.isPlaying();
+    }
+
     public float getVolume() {
         return getPlayerVolume() / volumeMultiplier;
     }

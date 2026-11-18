@@ -79,7 +79,12 @@ const SYMBOLS = [
   ['remote-toggle-desktop-lyric', ['android/src/main/java/com/guichaguri/trackplayer/module/MusicEvents.java', 'src/interfaces.ts']],
   ['setLyricButtonActive', ['android/src/main/java/com/guichaguri/trackplayer/service/metadata/MetadataManager.java']],
   ['lyricButtonActive', ['android/src/main/java/com/guichaguri/trackplayer/service/metadata/MetadataManager.java']],
-  ['userPausedDuringInterrupt', ['android/src/main/java/com/guichaguri/trackplayer/service/MusicManager.java']],
+  // B 方案（2026-11-18）：焦点恢复决策迁到纯逻辑状态机，旧的 userPausedDuringInterrupt 字段
+  // 改由 AudioFocusPolicy 的 userPaused 状态承担，表格随之演进（不是删掉守卫，而是换守卫对象）。
+  ['AudioFocusPolicy', ['android/src/main/java/com/guichaguri/trackplayer/service/MusicManager.java', 'android/src/main/java/com/guichaguri/trackplayer/service/focus/AudioFocusPolicy.java']],
+  ['resumePending', ['android/src/main/java/com/guichaguri/trackplayer/service/focus/AudioFocusPolicy.java']],
+  ['pauseByUser', ['android/src/main/java/com/guichaguri/trackplayer/service/MusicManager.java', 'android/src/main/java/com/guichaguri/trackplayer/service/MusicBinder.java']],
+  ['setUserVolume', ['android/src/main/java/com/guichaguri/trackplayer/service/MusicManager.java', 'android/src/main/java/com/guichaguri/trackplayer/service/MusicBinder.java', 'android/src/main/java/com/guichaguri/trackplayer/module/MusicModule.java']],
   ['autoResumeAfterInterrupt', ['android/src/main/java/com/guichaguri/trackplayer/service/MusicManager.java', 'src/interfaces.ts']],
   ['hasAudioFocus', ['android/src/main/java/com/guichaguri/trackplayer/service/MusicManager.java']],
   ['QUEUE_ID_SEQ', ['android/src/main/java/com/guichaguri/trackplayer/service/models/Track.java']],
