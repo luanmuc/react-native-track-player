@@ -169,6 +169,7 @@ public final class AudioFocusPolicy {
   public boolean isDucked() { return ducked; }
   public float getVolumeBeforeDuck() { return volumeBeforeDuck; }
 
+
   /**
    * 处理一个事件，返回要执行的动作（可能为空）。
    * 同一个事件的不同分支互斥，动作按列表顺序执行。
@@ -189,7 +190,9 @@ public final class AudioFocusPolicy {
       case LOSS_TRANSIENT:
         // 累积而不是覆盖：第二次打断时播放器已是 PAUSED，直接赋值会把第一次的欠账抹掉
         resumePending = resumePending || snap.intentPlaying();
-        userPaused = false;      // 新一轮系统打断，用户干预标记重新开始
+        // RT-02：userPaused 同样必须"累积"而非清零。连续打断场景下（来电 → 通话中点暂停 →
+        // 导航播报再打断），清零点会让用户在第一次打断里的暂停意愿被第二次打断抹掉，
+        // GAIN 时 shouldResume 判定通过，音乐自动响起。清零点只在 USER_PLAY 里保留。
         phase = Phase.INTERRUPTED;
         out.add(Action.of(A_PAUSE));
         break;

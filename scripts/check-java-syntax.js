@@ -70,7 +70,10 @@ function main() {
   for (const file of files) {
     const r = spawnSync(
       'javac',
-      ['-proc:none', '-nowarn', '-Xmaxerrs', '500', '-d', outDir, file],
+      // -sourcepath：让 javac 能按包路径解析同仓内的类。缺了它，逐文件编译时
+      // `switch (action.type)` 这类「引用同包类字段」的写法会因 Action 解析不到而
+      // 级联出误导性的 `illegal parenthesized expression`（本次 MusicManager 就是这么红的）。
+      ['-proc:none', '-nowarn', '-Xmaxerrs', '500', '-sourcepath', SRC, '-d', outDir, file],
       { encoding: 'utf8' }
     );
     // javac 的错误行以文件开头：`X.java:3: error: package android.content does not exist`

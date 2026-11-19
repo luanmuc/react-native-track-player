@@ -50,6 +50,9 @@ public class MusicBinder extends Binder {
         manager.setStopWithApp(bundle.getBoolean("stopWithApp", false));
         // manager.setAlwaysPauseOnInterruption(bundle.getBoolean("alwaysPauseOnInterruption", false));
         manager.getMetadata().updateOptions(bundle);
+        // RT-03：三个焦点开关原来只在 setupPlayer 读一次，这里补运行时更新通道
+        // （只覆盖 bundle 里显式给出的键，见 MusicManager.updateFocusOptions）
+        manager.updateFocusOptions(bundle);
     }
 
     public void updateNowPlayingMetadata(NowPlayingMetadata nowPlaying, boolean isPlaying) {
@@ -84,6 +87,16 @@ public class MusicBinder extends Binder {
     // 让焦点打断逻辑知道这次暂停是用户按的（否则打断结束后会自动续播）
     public void pauseByUser() {
       manager.pauseByUser();
+    }
+
+    // RT-04：让上层（reset / stop）能撤销已排队的续播
+    public void cancelPendingResume() {
+        manager.cancelPendingResume();
+    }
+
+    // RT-05：复位焦点策略并恢复被压低的音量
+    public void resetFocus() {
+        manager.resetFocus();
     }
 
     // lx-music fork: 用户改音量统一走 manager.setUserVolume()，让策略知道音量已被用户接管

@@ -386,6 +386,10 @@ public class MusicModule extends ReactContextBaseJavaModule implements ServiceCo
     @ReactMethod
     public void reset(final Promise callback) {
         waitForConnection(() -> {
+            // RT-04/RT-05：复位前先撤销待续播（否则到点会把已 reset 的播放器拉回播放），
+            // 并让策略把 duck 期间压低的音量恢复回来
+            binder.cancelPendingResume();
+            binder.resetFocus();
             binder.getPlayback().reset();
             callback.resolve(null);
         });
@@ -410,6 +414,8 @@ public class MusicModule extends ReactContextBaseJavaModule implements ServiceCo
     @ReactMethod
     public void stop(final Promise callback) {
         waitForConnection(() -> {
+            // RT-04：停止同样要撤销待续播
+            binder.cancelPendingResume();
             binder.getPlayback().stop();
             callback.resolve(null);
         });

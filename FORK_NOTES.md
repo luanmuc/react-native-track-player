@@ -69,7 +69,14 @@
   - **R6** 用户改音量走 `MusicManager.setUserVolume()` → 策略清掉"鸭子待恢复"，GAIN 不再用旧值覆盖。
 - 另外两条策略级修正：`CAN_DUCK` 只在**真正在播**时才改音量（暂停态收到 CAN_DUCK 不再把音量改成 20% 卡住）；鸭子目标改**比例**（`音量×0.25`）而非绝对 `0.2`。
 - `onPause()` 不再注销 `noisyReceiver`（注销统一放 `onStop`/`destroy`），否则通话中拔耳机没人拦，挂断续播会从扬声器外放。
-- 门禁：`scripts/check_audio_focus_policy.js` —— javac 编译「策略类 + 场景 runner」后跑断言，覆盖主路径、R1~R6、连续打断、鸭子中被打断、拔线、销毁复位、两个子开关，共 **28 条**；静态断言禁止策略类引入 `android.*` 与裸数字状态比较。
+- 门禁：`scripts/check_audio_focus_policy.js` —— javac 编译「策略类 + 场景 runner」后跑断言，覆盖主路径、R1~R6、连续打断、鸭子中被打断、拔线、销毁复位、两个子开关，共 **37 条**（2026-11-19 由 28 条扩充，新增用例见下）；静态断言禁止策略类引入 `android.*` 与裸数字状态比较。
+- **2026-11-19 通读补修 5 条 P1（RT-01~RT-05）**，门禁用例同步扩到 **37 条**：
+  - **RT-01 / RT-04 续播窗口不可撤销**（同源）：`A_SCHEDULE_RESUME` 的 `postDelayed` 返回值原来被丢弃，`pause()`/`stop()`/`reset()`/`switchPlayback()` 都无法撤销已排队的续播 → 500ms 内用户按暂停会被到点的 `play()` 覆盖。改为 `MusicManager.scheduleResume()` 保存 `pendingResume` 句柄 + `cancelPendingResume()`，并在 `dispatch()` 的 `USER_PAUSE`/`USER_PLAY`、`switchPlayback()`、`MusicModule.reset()`、`MusicModule.stop()` 四处撤销。
+  - **RT-02 连续打断抹掉用户暂停意愿**：`LOSS_TRANSIENT` 原来无条件 `userPaused = false`（`resumePending` 是累积、`userPaused` 却清零）。场景「来电 → 通话中点暂停 → 导航播报再打断 → 挂断」会复活播放。改为与 `resumePending` 一致的累积语义，清零点只保留在 `USER_PLAY`。
+  - **RT-03 三个焦点开关只在 `setupPlayer` 读一次**：`handleAudioFocus` / `autoResumeAfterInterrupt` / `duckOnTransientDuck` 不在 `updateOptions` 里，设置页改了不重建播放器就不生效。新增 `MusicManager.updateFocusOptions(Bundle)`（只覆盖 bundle 里显式给出的键，避免 App 不传时把已关的开关回退成默认 `true`），由 `MusicBinder.updateOptions()` 调用。
+  - **RT-05 `reset()` 不恢复被压低的音量**：`AudioFocusPolicy.reset()` 清掉 `ducked` 与 `volumeBeforeDuck` 却不产出恢复动作，DUCKED 期间调用会让音量永久卡在 25%。新增 `MusicManager.resetFocus()`（先 `pb.setVolume(getVolumeBeforeDuck())` 再 `reset()`），由 `MusicModule.reset()` 调用。
+  - 门禁新增 9 条用例：RT-02 的「第二次打断后意愿保留 / GAIN 不续播」+ 三条对照（无用户暂停仍续播、USER_PLAY 清标记、清空后新一轮照常续播）+ RT-05 的三条（`isDucked` / `volumeBeforeDuck` / DUCK 产出压低动作）。红-绿已验：换成修复前的策略类跑同一套用例，RT-02 两条必红（`12 passed / 2 failed`），修复后 `37 passed / 0 failed`。
+- **`check-java-syntax.js` 补 `-sourcepath`（2026-11-19）**：原实现逐文件 `javac` 且不给源码根，同包引用解析不到时会级联出误导性的 `illegal parenthesized expression`（`MusicManager.execute()` 的 `switch (action.type)` 就因此长期被判红）。加 `-sourcepath <java 源码根>` 后误报消失（5854 条类路径缺失仍按预期不判红），并用「注入缺分号」做过变异验证，确认仍能抓到真语法错误。
 
 ### 通知栏基础参数（`01f34b15`）
 

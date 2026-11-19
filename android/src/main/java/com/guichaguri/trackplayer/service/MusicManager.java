@@ -63,6 +63,10 @@ public class MusicManager {
     // 本类只负责「采集播放器快照 → 把事件喂给策略 → 执行返回的动作」。
     // 这样 4 个焦点回调 × 播放器 5 个状态 × 用户 3 个开关的交叉态才能在 JVM 上穷举验证。
     private final AudioFocusPolicy focusPolicy = new AudioFocusPolicy();
+    // RT-04：已排队的续播任务句柄。原来是 `getHandler().postDelayed(...)` 丢弃返回值，
+    // 于是用户暂停 / 切歌 / reset / 划掉通知都无法撤销，到点仍会把状态拉回播放（RT-01 同源）。
+    private Runnable pendingResume = null;
+
     // 两个子行为开关（仅在 handleAudioFocus 为 true 时才有意义）
     private boolean autoResumeAfterInterrupt = true;   // 临时打断结束后是否自动续播
     private boolean duckOnTransientDuck = true;        // CAN_DUCK 时是否降低音量
@@ -134,12 +138,77 @@ public class MusicManager {
 
     /** 事件入口：开关关闭时完全不接管；每次同步两个子开关（改设置后无需重建策略） */
     private void dispatch(AudioFocusPolicy.Event event) {
+        // RT-01/RT-04：用户自己的动作（播放/暂停/停止）一律撤销已排队的续播，
+        // 这样"500ms 内点暂停"不会再被到点的 play() 覆盖。
+        // 注意：Event 枚举里没有 USER_STOP —— stop 路径在 MusicModule.stop() 里直接撤销。
+        if (event == AudioFocusPolicy.Event.USER_PAUSE || event == AudioFocusPolicy.Event.USER_PLAY) {
+            cancelPendingResume();
+        }
         if (!handleAudioFocus) return;
         focusPolicy.configure(autoResumeAfterInterrupt, duckOnTransientDuck);
         execute(focusPolicy.handle(event, snapshot()));
     }
 
+    /**
+     * RT-04：排队一次续播，并把任务句柄留着以便撤销。
+     * 到点时复核三件事：仍持有焦点、策略仍认为该恢复、播放器仍在暂停态。
+     */
+    private void scheduleResume(long delayMs) {
+        Handler h = getHandler();
+        if (h == null) return;
+        cancelPendingResume();
+        pendingResume = () -> {
+            pendingResume = null;
+            if (playback != null && hasAudioFocus
+                    && focusPolicy.getPhase() == AudioFocusPolicy.Phase.NORMAL
+                    && playback.getState() == PlaybackStateCompat.STATE_PAUSED) playback.play();
+        };
+        h.postDelayed(pendingResume, delayMs);
+    }
+
+    /**
+     * RT-04：撤销已排队的续播。用户暂停、停止、复位、切换播放器、销毁时必须调，
+     * 否则 500ms 窗口内用户的意图会被到点的 play() 覆盖（RT-01）。
+     */
+    public void cancelPendingResume() {
+        if (pendingResume == null) return;
+        Handler h = getHandler();
+        if (h != null) h.removeCallbacks(pendingResume);
+        pendingResume = null;
+    }
+
+    /**
+     * RT-03：三个焦点开关的运行时更新通道。
+     * 原来只在 createLocalPlayback（setupPlayer）读一次，设置页改了不重建播放器就完全不生效。
+     * 只覆盖 bundle 里显式给出的键，避免 App 不传时把用户已关的开关回退成默认 true。
+     */
+    public void updateFocusOptions(android.os.Bundle bundle) {
+        if (bundle.containsKey("handleAudioFocus")) {
+            this.handleAudioFocus = bundle.getBoolean("handleAudioFocus", true);
+        }
+        if (bundle.containsKey("autoResumeAfterInterrupt")) {
+            this.autoResumeAfterInterrupt = bundle.getBoolean("autoResumeAfterInterrupt", true);
+        }
+        if (bundle.containsKey("duckOnTransientDuck")) {
+            this.duckOnTransientDuck = bundle.getBoolean("duckOnTransientDuck", true);
+        }
+        focusPolicy.configure(autoResumeAfterInterrupt, duckOnTransientDuck);
+    }
+
+    /**
+     * RT-05：复位焦点策略前，先把 duck 期间压下去的音量恢复回来。
+     * 原来 reset() 直接清掉 ducked / volumeBeforeDuck，Ducked 期间调用会让音量永久卡在 25%。
+     */
+    public void resetFocus() {
+        ExoPlayback pb = getPlayback();
+        if (pb != null && focusPolicy.isDucked()) {
+            pb.setVolume(focusPolicy.getVolumeBeforeDuck());
+        }
+        focusPolicy.reset();
+    }
+
     /** 执行策略返回的动作（顺序敏感：永久丢失要求"先暂停再释放焦点"） */
+
     private void execute(java.util.List<AudioFocusPolicy.Action> actions) {
         ExoPlayback pb = playback;
         for (AudioFocusPolicy.Action action : actions) {
@@ -160,12 +229,7 @@ public class MusicManager {
                     abandonAudioFocus();
                     break;
                 case AudioFocusPolicy.A_SCHEDULE_RESUME:
-                    getHandler().postDelayed(() -> {
-                        // 到点时复核三件事：仍持有焦点、策略仍认为该恢复（期间用户没干预）、播放器仍在暂停态
-                        if (playback != null && hasAudioFocus
-                                && focusPolicy.getPhase() == AudioFocusPolicy.Phase.NORMAL
-                                && playback.getState() == PlaybackStateCompat.STATE_PAUSED) playback.play();
-                    }, action.delayMs);
+                    scheduleResume(action.delayMs);
                     break;
                 case AudioFocusPolicy.A_NOTIFY_FOCUS_DENIED:
                     Log.w(Utils.LOG, "audio focus denied while playing, pause instead");
@@ -249,6 +313,8 @@ public class MusicManager {
     }
 
     public void switchPlayback(ExoPlayback playback) {
+        // RT-04：换播放器时旧实例上的续播任务必须撤销，否则会去 play 已销毁的对象
+        cancelPendingResume();
         if(this.playback != null) {
             this.playback.stop();
             this.playback.destroy();

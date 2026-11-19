@@ -59,6 +59,42 @@ public final class AudioFocusPolicyTest {
     a = p.handle(Event.GAIN, PLAYING);
     expect("用户接管：GAIN 不再自动播", !has(a, AudioFocusPolicy.A_SCHEDULE_RESUME));
 
+    // 5b. RT-02 回归：连续打断不得抹掉用户暂停意愿
+    //     打断 A（来电）→ 用户在通话中点暂停 → 打断 B（导航播报）→ 挂断
+    //     修复前 LOSS_TRANSIENT 会无条件 userPaused=false，GAIN 时判定通过，音乐自动响起。
+    p = new AudioFocusPolicy();
+    p.handle(Event.LOSS_TRANSIENT, PLAYING);
+    p.handle(Event.USER_PAUSE, PAUSED);
+    expect("RT-02：用户暂停已记录", p.isUserPaused());
+    p.handle(Event.LOSS_TRANSIENT, PAUSED);
+    expect("RT-02：第二次打断后用户暂停意愿仍保留", p.isUserPaused());
+    a = p.handle(Event.GAIN, PAUSED);
+    expect("RT-02：连续打断后 GAIN 不得续播", !has(a, AudioFocusPolicy.A_SCHEDULE_RESUME));
+
+    // 5c. RT-02 对照：同一轮打断里"没被用户暂停过"必须照常续播（保证修复没把功能弄死）
+    p = new AudioFocusPolicy();
+    p.handle(Event.LOSS_TRANSIENT, PLAYING);
+    p.handle(Event.LOSS_TRANSIENT, PAUSED);
+    a = p.handle(Event.GAIN, PAUSED);
+    expect("RT-02 对照：无用户暂停时连续打断仍续播", has(a, AudioFocusPolicy.A_SCHEDULE_RESUME));
+
+    // 5d. RT-02 对照：用户暂停后自己按播放，意愿清零，后续打断恢复正常语义
+    p = new AudioFocusPolicy();
+    p.handle(Event.LOSS_TRANSIENT, PLAYING);
+    p.handle(Event.USER_PAUSE, PAUSED);
+    p.handle(Event.USER_PLAY, PLAYING);
+    expect("RT-02 对照：USER_PLAY 清空用户暂停标记", !p.isUserPaused());
+    p.handle(Event.LOSS_TRANSIENT, PLAYING);
+    a = p.handle(Event.GAIN, PAUSED);
+    expect("RT-02 对照：清空后新一轮打断照常续播", has(a, AudioFocusPolicy.A_SCHEDULE_RESUME));
+
+    // 6b. RT-05：DUCK 期间必须能在 reset 前读到状态与原始音量
+    p = new AudioFocusPolicy();
+    List<Action> duck = p.handle(Event.LOSS_CAN_DUCK, PLAYING_AT_60);
+    expect("RT-05：DUCK 期间 isDucked 为真", p.isDucked());
+    expect("RT-05：记录到的原始音量是 0.6", Math.abs(p.getVolumeBeforeDuck() - 0.6f) < 1e-6);
+    expect("RT-05：DUCK 产出压低动作", volumeOf(duck) > 0f);
+
     // 6. 暂停态收到 CAN_DUCK 不得改写音量
     p = new AudioFocusPolicy();
     a = p.handle(Event.LOSS_CAN_DUCK, PAUSED);
