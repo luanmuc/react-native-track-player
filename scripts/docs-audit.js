@@ -50,8 +50,15 @@ function ruleIconCount() {
 
 // ── 规则 2：App 侧锁定 sha ↔ App 仓 package.json（跨仓）────────────────
 function ruleLockedSha() {
-  const sib = path.resolve(ROOT, '..', 'lx-music-mobile', 'package.json');
-  if (!fs.existsSync(sib)) { report.push('⚪ 规则2 跳过：本地无 ../lx-music-mobile'); return; }
+  // 候选顺序：环境变量 → 真实 App 仓（repo-clones/mobile-app）→ 旁路 clone（../lx-music-mobile）
+  // 2026-11-20：此前只认 ../lx-music-mobile，那是 11-18 的旧 clone（锁 12049cd），
+  // 会把 FORK_NOTES 里已升到 3f8546d 的正确值又改回旧 sha。
+  const sib = [
+    process.env.LX_APP_ROOT && path.join(process.env.LX_APP_ROOT, 'package.json'),
+    path.resolve(ROOT, '..', '..', 'repo-clones', 'mobile-app', 'package.json'),
+    path.resolve(ROOT, '..', 'lx-music-mobile', 'package.json'),
+  ].filter(Boolean).find((p) => fs.existsSync(p));
+  if (!sib) { report.push('⚪ 规则2 跳过：未找到 App 仓 package.json'); return; }
   const m = JSON.parse(fs.readFileSync(sib, 'utf8')).dependencies['react-native-track-player'].match(/#([0-9a-f]{7,40})/);
   if (!m) { report.push('🔴 App package.json 未锁定 sha'); return; }
   const sha7 = m[1].slice(0, 7);
