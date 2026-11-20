@@ -7,7 +7,7 @@
 ## 分支与基线
 
 - 开发分支：`v2`
-- App 侧当前锁定的 commit：`1e99d1d`（2026-11-19 音频焦点 RT-01~RT-05 五条 P1 收口后升上来；此前锁 `12049cd`、更早 `b9ecdab2` 含音频焦点 B 方案状态机。音高桥方法在 `536521c`，App 侧尚未锁到它——`setPlaybackPitch` 对旧 sha 有存在性守卫，装 `b9ecdab2` 时静默跳过、不崩；锁定 `536521c` 后自动生效。更早的 `82e4e21`（b78 起）从 `eceacb5` 升上来，取的是本 fork 2026-11-07 全覆盖审计的修复：焦点续播不覆盖用户暂停、`contentIntent` 补 `FLAG_IMMUTABLE`、服务挂 `PLAYER_CONTROL` 权限、耳机拔出复位音量、归口注释补齐。`eceacb5` 是更早的 b75 基线，本身只追加了 `quality` / `subSource` 两个可选类型字段、未改定制逻辑）
+- App 侧当前锁定的 commit：`31895c6`（2026-11-19 音频焦点 RT-01~RT-05 五条 P1 收口后升上来；此前锁 `12049cd`、更早 `b9ecdab2` 含音频焦点 B 方案状态机。音高桥方法在 `536521c`，App 侧尚未锁到它——`setPlaybackPitch` 对旧 sha 有存在性守卫，装 `b9ecdab2` 时静默跳过、不崩；锁定 `536521c` 后自动生效。更早的 `82e4e21`（b78 起）从 `eceacb5` 升上来，取的是本 fork 2026-11-07 全覆盖审计的修复：焦点续播不覆盖用户暂停、`contentIntent` 补 `FLAG_IMMUTABLE`、服务挂 `PLAYER_CONTROL` 权限、耳机拔出复位音量、归口注释补齐。`eceacb5` 是更早的 b75 基线，本身只追加了 `quality` / `subSource` 两个可选类型字段、未改定制逻辑）
 - 本文件里其余各条后面的短 sha 是**该条定制落地时的历史提交**，不是当前基线，改动时以本条为准
 
 > 上游官方已不再维护 `v2` 分支（最新为 v5，Android 侧已重写为 Kotlin）。
