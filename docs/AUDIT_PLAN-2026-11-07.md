@@ -189,8 +189,8 @@
 ## 七、产出物
 
 - 本计划：`docs/AUDIT_PLAN-2026-11-07.md`
-- 执行后：`docs/AUDIT_REPORT-2026-11-07.md`（分级发现 + 每条的可复现命令/锚点 + blocked 清单）
-- 过程：`docs/AUDIT_PROGRESS-2026-11-07.md`（逐维结论、放弃与反证记录）
+- 执行后：`docs/archive/2026-11-07/AUDIT_REPORT-2026-11-07.md`（分级发现 + 每条的可复现命令/锚点 + blocked 清单）
+- 过程：`docs/archive/2026-11-07/AUDIT_PROGRESS-2026-11-07.md`（逐维结论、放弃与反证记录）
 - 修复若经确认：同步 `FORK_NOTES.md`（含过期 sha）与 App 侧 `KNOWN_ISSUES` / `UPSTREAM_LIFECYCLE`
 
 ### J. 语义契约与跨仓签名一致性（2026-11-08 新增）
