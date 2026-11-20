@@ -11,7 +11,7 @@
 **目标**：在无 Android SDK / 无真机的环境里，把能压的部分压到极限并留证据：
 
 1. **Java 静态全量**：18 个 `.java` / 4,204 行逐文件 `javac` 语法检查
-2. **焦点策略行为**：58 条场景断言（含短打断分级与兜底复核 21 条）+ 红-绿双向验证（换成修复前策略类必须变红）
+2. **焦点策略行为**：67 条场景断言（含短打断分级与通用性补修 30 条）+ 红-绿双向验证（换成修复前策略类必须变红）
 3. **TS 契约层**：4 文件 / 748 行 `tsc` 编译与 `lib/` 产物一致性
 4. **静态不变量**：队列 ID 单调、状态比较无裸数字、`postDelayed` 具名常量、AGP/SDK 自洽
 5. **集成落地**：产物打进 App 后 APK 内确实带自定义 drawable 与新增方法（L3）
@@ -32,14 +32,14 @@
 | # | 套件 | 命令 | 规模 | 通过标准 | 层级 |
 |---|---|---|---|---:|---|
 | P1 | Java 语法全量 | `node scripts/check-java-syntax.js` | 18 文件 / 4,204 行 | **0 条语法错误**；类路径缺失（无 SDK）按预期不判红 | L0 |
-| P2 | 音频焦点策略行为 | `node scripts/check_audio_focus_policy.js` | **58 条**场景断言 | **58/0**；且换回修复前策略类必须 **≥2 红** | L2 |
+| P2 | 音频焦点策略行为 | `node scripts/check_audio_focus_policy.js` | **67 条**场景断言 | **67/0**；且换回修复前策略类必须 **≥2 红** | L2 |
 | P3 | TS 契约层编译 | `npx tsc -p .`（App 侧 typescript） | 4 文件 / 748 行 | rc=0，`lib/*.d.ts` 含 `quality` / `subSource` | L1 |
 | P4 | 静态不变量 | `node scripts/check_truth_gates.js` | 4 条（G1~G4） | 全一致 | L0 |
 | P5 | 文档镜像 | `node scripts/docs-audit.js --dry-run` | 全部 `.md` | 0 待处理 / 0 硬失败 | L0 |
 | P6 | 变异注入（红证） | 手工 3 处注入后跑 P2 | 3 个变异体 | **3/3 被抓**（详见 §3） | L2 |
 | P7 | 集成落地 | 打 App APK + 解包 | 1 次 | APK 内含 `notify_mode_*` 4 态 × 6 密度 + `setNotificationRepeatMode` 等方法 | L3 |
 
-**当前实测（2026-11-20）**：P1 **0 错**（5854 条类路径缺失属预期）；P2 **58/0**；P4 **4 条全一致**；P3/P5/P7 见 §4 记录。
+**当前实测（2026-11-20）**：P1 **0 错**（5854 条类路径缺失属预期）；P2 **67/0**；P4 **4 条全一致**；P3/P5/P7 见 §4 记录。
 
 ---
 
@@ -51,8 +51,8 @@ node scripts/check-java-syntax.js          # 18 文件 / 0 错
 node scripts/check_truth_gates.js         # 4 条不变量
 node scripts/docs-audit.js --dry-run      # 文档镜像
 
-# 2) 行为层（焦点策略 58 条）
-node scripts/check_audio_focus_policy.js  # 58/0
+# 2) 行为层（焦点策略 67 条）
+node scripts/check_audio_focus_policy.js  # 67/0
 
 # 3) 契约层（App 侧 typescript 编 rntp src）
 npx tsc -p .                              # rc=0
@@ -75,7 +75,7 @@ npx tsc -p .                              # rc=0
 | M2 | 把 `LOSS_TRANSIENT` 的 `userPaused` 改回无条件 `false` | RT-02 核心 2 条**变红**（实测修复前 `12 passed / 2 failed`） | 已验证过的红-绿路径 |
 | M3 | `resetFocus()` 去掉 `setVolume(getVolumeBeforeDuck())` | RT-05 的 `volumeBeforeDuck` / 恢复动作断言**变红** | DUCKED 期间 reset 音量卡 25% 的原缺陷 |
 
-**纪律**：每个变异跑完必须 `git checkout -- <file>` 还原，并复跑 P2 确认回到 **58/0**；还原后不复跑等于没做。
+**纪律**：每个变异跑完必须 `git checkout -- <file>` 还原，并复跑 P2 确认回到 **67/0**；还原后不复跑等于没做。
 
 ---
 
@@ -83,7 +83,7 @@ npx tsc -p .                              # rc=0
 
 | 日期 | 基线 | P1 | P2 | P4 | 备注 |
 |---|---|---|---|---|---|
-| 2026-11-20 | 短打断分级与兜底复核 | 18 文件 / **0 错** | **58/0** | 4 条全一致 | 新增 21 条：`LOSS_TRANSIENT` 非通话改压低、`FOCUS_RECHECK` 兜底、`BECOMING_NOISY` 按设备在位判定 |
+| 2026-11-20 | 短打断分级与兜底复核 | 18 文件 / **0 错** | **67/0** | 4 条全一致 | 新增 30 条：`LOSS_TRANSIENT` 非通话改压低、`FOCUS_RECHECK` 兜底、`RECHECK_DENIED` 长占用降级暂停、`BECOMING_NOISY` 按设备在位判定、二次打断不重复压低 |
 | 2026-11-20 | `3f8546d` | 18 文件 / **0 错** | **37/0** | 4 条全一致 | `check-java-syntax` 已带 `-sourcepath`，长期误报消失 |
 | 2026-11-19 | `3f8546d` | — | 37/0（红证 `12/2`） | — | RT-01~RT-05 收口当轮记录 |
 | 2026-11-07 | `eceacb5` | 17 文件 | 28/0 | — | 初版审计基线 |

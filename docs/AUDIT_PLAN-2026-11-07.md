@@ -263,13 +263,13 @@ grep -rh -A1 "@ReactMethod" android/src/main/java --include=*.java | grep -oE "p
 | RT-03 | 三个焦点开关（`handleAudioFocus` / `autoResumeAfterInterrupt` / `duckOnTransientDuck`）只在 `setupPlayer` 读一次，设置页改了不重建播放器就不生效 | `MusicManager.updateFocusOptions(Bundle)` 只覆盖 bundle 里显式给出的键（避免 App 不传时把已关的开关回退成默认 `true`），由 `MusicBinder.updateOptions()` 调用 | 与 App `check_player_service_runtime` 的开关两态对照 |
 | RT-05 | `AudioFocusPolicy.reset()` 清 `ducked` / `volumeBeforeDuck` 却不产出恢复动作，DUCKED 期间 reset 会让音量永久卡 25% | `MusicManager.resetFocus()`（先 `setVolume(getVolumeBeforeDuck())` 再 `reset()`），由 `MusicModule.reset()` 调用 | 新增 3 条（`isDucked` / `volumeBeforeDuck` / DUCK 产出压低动作） |
 
-**红-绿实证**：换回修复前策略类跑同一套用例 → **12 passed / 2 failed**（RT-02 两条红）；修复后 **37 passed / 0 failed**；2026-11-20 短打断分级再扩到 **58 passed / 0 failed**。这是本节唯一的 A 级证据，其余仍按 §二 分级。
+**红-绿实证**：换回修复前策略类跑同一套用例 → **12 passed / 2 failed**（RT-02 两条红）；修复后 **37 passed / 0 failed**；2026-11-20 短打断分级与通用性补修再扩到 **67 passed / 0 failed**。这是本节唯一的 A 级证据，其余仍按 §二 分级。
 
 ### 8.2 门禁与工具变化
 
 | 项 | 变化 | 实跑（2026-11-20） |
 |---|---|---|
-| `scripts/check_audio_focus_policy.js` | 断言 28 → 37 → **58 条**（2026-11-20 加短打断分级与兜底复核） | **58 通过 / 0 失败** |
+| `scripts/check_audio_focus_policy.js` | 断言 28 → 37 → 58 → **67 条**（2026-11-20 加短打断分级、兜底复核与通用性补修） | **67 通过 / 0 失败** |
 | `scripts/check-java-syntax.js` | 补 `-sourcepath <java 源码根>`，修「同包引用解析不到 → 级联出误导性 illegal parenthesized expression」的长期误报（`MusicManager.execute()` 的 `switch (action.type)` 曾被长期判红）；注入缺分号变异仍被抓 | **0 条语法错误**；5854 条类路径缺失（无 Android SDK）按预期不判红 |
 | `scripts/check_truth_gates.js` | G1 队列 ID 单调（1 处 `AtomicLong`）/ G2 状态比较无裸数字 / G3 AGP 8.6.1 自洽 / G4 `postDelayed` 均具名常量 | **4 条全一致** |
 

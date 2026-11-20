@@ -135,6 +135,20 @@ public class MusicManager {
         if (pb != null) pb.setVolume(volume);
     }
 
+    /**
+     * lx-music fork: 程序改音量（淡入/淡出/睡前淡出/恢复用户设定值）。
+     *
+     * <p>**不得**走 {@link #setUserVolume}：App 用 `TrackPlayer.setVolume` 做逐帧淡入，
+     * 每帧都会打到 JS→native 的 `setVolume`，若每次都 dispatch `USER_VOLUME`，
+     * 策略会认为「用户在调音量」并清掉 duck 标记 —— 表现为打断时压不下去、
+     * 或压低后音量永久停在 25%。App 侧没有用户可调的 player.volume 控件
+     * （用户调的是系统媒体音量，属 stream volume，与 `pb.setVolume` 无关）。
+     */
+    public void setVolumeInternal(float volume) {
+        ExoPlayback pb = getPlayback();
+        if (pb != null) pb.setVolume(volume);
+    }
+
     /** 采集播放器快照；playback 为空时给一个"什么都不是"的安全快照 */
     private AudioFocusPolicy.Snapshot snapshot() {
         ExoPlayback pb = playback;
@@ -156,12 +170,29 @@ public class MusicManager {
     }
 
     /**
-     * 当前是否仍有外部音频设备在位（蓝牙 A2DP/SCO、有线耳机、USB 耳机）。
+     * 当前是否仍有外部音频设备在位（蓝牙 A2DP/SCO/LE、有线耳机、USB 耳机）。
      * 用来区分「真拔线/断蓝牙」与「蓝牙路由抖动误发的 BECOMING_NOISY」——
      * 后者若照旧按拔线处理，会把音乐永久停在暂停态。
+     *
+     * <p>三重判定（任一为真即视为在位）：
+     * <ol>
+     *   <li>`isBluetoothA2dpOn` / `isBluetoothScoOn` / `isWiredHeadsetOn`——这三个 deprecated
+     *       方法反映的是**当前路由**，比设备枚举准（枚举会把「已配对未激活」也算进来，</br>
+     *       导致真断线时误判为在位 → 不暂停 → 外放）；</li>
+     *   <li>设备枚举，覆盖 LE Audio 耳机（`TYPE_BLE_HEADSET`）与 USB 系；</li>
+     *   <li>任何异常都按「不在位」处理，宁可暂停也不外放。</li>
+     * </ol>
      */
+    @SuppressWarnings("deprecation")
     private boolean hasExternalAudioDevice() {
         if (audioManager == null) return false;
+        try {
+            if (audioManager.isBluetoothA2dpOn()) return true;
+            if (audioManager.isBluetoothScoOn()) return true;
+            if (audioManager.isWiredHeadsetOn()) return true;
+        } catch (Exception ignored) {
+            // 个别 ROM 对 deprecated 方法抛异常，继续走枚举兜底
+        }
         AudioDeviceInfo[] outs;
         try {
             outs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS);
@@ -173,6 +204,8 @@ public class MusicManager {
             switch (d.getType()) {
                 case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP:
                 case AudioDeviceInfo.TYPE_BLUETOOTH_SCO:
+                case AudioDeviceInfo.TYPE_BLE_HEADSET:
+                case AudioDeviceInfo.TYPE_BLE_SPEAKER:
                 case AudioDeviceInfo.TYPE_WIRED_HEADSET:
                 case AudioDeviceInfo.TYPE_WIRED_HEADPHONES:
                 case AudioDeviceInfo.TYPE_USB_HEADSET:
@@ -251,6 +284,8 @@ public class MusicManager {
                 dispatch(AudioFocusPolicy.Event.FOCUS_RECHECK);
                 return;
             }
+            // 对方仍持有（闹钟、长通话、长视频）：继续压低出声不合适，降级为暂停
+            dispatch(AudioFocusPolicy.Event.RECHECK_DENIED);
             if (recheckAttempts < RECHECK_MAX_ATTEMPTS) {
                 recheckAttempts++;
                 scheduleRecheck(delayMs);

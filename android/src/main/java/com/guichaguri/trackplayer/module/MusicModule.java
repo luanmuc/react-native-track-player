@@ -433,7 +433,9 @@ public class MusicModule extends ReactContextBaseJavaModule implements ServiceCo
     @ReactMethod
     public void setVolume(final float volume, final Promise callback) {
         waitForConnection(() -> {
-            binder.setUserVolume(volume);
+            // lx-music fork: JS 的 setVolume 被 App 用作逐帧淡入/淡出，属程序行为，
+            // 不能标记成"用户改音量"（否则会清掉焦点策略的 duck 标记）
+            binder.setProgrammaticVolume(volume);
             callback.resolve(null);
         });
     }

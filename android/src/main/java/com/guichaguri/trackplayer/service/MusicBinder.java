@@ -104,6 +104,11 @@ public class MusicBinder extends Binder {
         manager.setUserVolume(volume);
     }
 
+    // lx-music fork: 程序改音量（淡入/淡出/恢复设定值）走这里，不得触发焦点策略的"用户接管"
+    public void setProgrammaticVolume(float volume) {
+        manager.setVolumeInternal(volume);
+    }
+
     public int getRatingType() {
         return manager.getMetadata().getRatingType();
     }

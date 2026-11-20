@@ -256,6 +256,41 @@ public final class AudioFocusPolicyTest {
     a = p.handle(Event.FOCUS_RECHECK, PAUSED);
     expect("路由抖动：之后仍能恢复", has(a, AudioFocusPolicy.A_SCHEDULE_RESUME));
 
+    // ═══ 2026-11-20 通用性补修 ═══
+    // 28. 已在压低时再来一次 TRANSIENT 不得二次压低（否则 0.6 → 0.15 → 0.0375）
+    p = new AudioFocusPolicy();
+    a = p.handle(Event.LOSS_TRANSIENT, PLAYING_IDLE);
+    List<Action> second = p.handle(Event.LOSS_TRANSIENT, new Snapshot(AudioFocusPolicy.PS_PLAYING, true, true,
+            0.6f * AudioFocusPolicy.DUCK_RATIO, false, false));
+    expect("二次打断：不再重复压低", !has(second, AudioFocusPolicy.A_SET_VOLUME));
+    expect("二次打断：原始音量仍记作 0.6", Math.abs(p.getVolumeBeforeDuck() - 0.6f) < 0.001f);
+
+    // 29. 用户在压低期间按了播放（phase 被清成 NORMAL）→ 复核仍要收回音量
+    p = new AudioFocusPolicy();
+    p.handle(Event.LOSS_CAN_DUCK, PLAYING_AT_60);
+    p.handle(Event.USER_PLAY, PLAYING_AT_60);
+    a = p.handle(Event.FOCUS_RECHECK, PLAYING_AT_60);
+    expect("复核：NORMAL 但音量仍压着时也要收回", Math.abs(volumeOf(a) - 0.6f) < 0.001f);
+    expect("复核：这种情况不触发续播", !has(a, AudioFocusPolicy.A_SCHEDULE_RESUME));
+
+    // 30. 对方长期占用（闹钟/长视频）：复核失败要降级为暂停，不能继续以低音量出声
+    p = new AudioFocusPolicy();
+    p.handle(Event.LOSS_TRANSIENT, PLAYING_IDLE);
+    a = p.handle(Event.RECHECK_DENIED, PLAYING_IDLE);
+    expect("长占用：降级为暂停", has(a, AudioFocusPolicy.A_PAUSE));
+    expect("长占用：同时收回被压的音量", Math.abs(volumeOf(a) - 0.6f) < 0.001f);
+    expect("长占用：欠账保留待对方释放", p.isResumePending());
+    a = p.handle(Event.FOCUS_RECHECK, PAUSED);
+    expect("长占用：对方释放后仍能恢复", has(a, AudioFocusPolicy.A_SCHEDULE_RESUME));
+
+    // 31. 长占用期间用户自己按暂停 → 释放后不得自动复活
+    p = new AudioFocusPolicy();
+    p.handle(Event.LOSS_TRANSIENT, PLAYING_IDLE);
+    p.handle(Event.RECHECK_DENIED, PLAYING_IDLE);
+    p.handle(Event.USER_PAUSE, PAUSED);
+    a = p.handle(Event.FOCUS_RECHECK, PAUSED);
+    expect("长占用：用户暂停过则不复活", !has(a, AudioFocusPolicy.A_SCHEDULE_RESUME));
+
     System.out.println("\n结果：" + pass + " 通过 / " + fail + " 失败");
     if (fail > 0) System.exit(1);
   }

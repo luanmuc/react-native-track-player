@@ -91,7 +91,11 @@ const SYMBOLS = [
   ['AudioFocusPolicy', ['android/src/main/java/com/guichaguri/trackplayer/service/MusicManager.java', 'android/src/main/java/com/guichaguri/trackplayer/service/focus/AudioFocusPolicy.java']],
   ['resumePending', ['android/src/main/java/com/guichaguri/trackplayer/service/focus/AudioFocusPolicy.java']],
   ['pauseByUser', ['android/src/main/java/com/guichaguri/trackplayer/service/MusicManager.java', 'android/src/main/java/com/guichaguri/trackplayer/service/MusicBinder.java']],
-  ['setUserVolume', ['android/src/main/java/com/guichaguri/trackplayer/service/MusicManager.java', 'android/src/main/java/com/guichaguri/trackplayer/service/MusicBinder.java', 'android/src/main/java/com/guichaguri/trackplayer/module/MusicModule.java']],
+  ['setUserVolume', ['android/src/main/java/com/guichaguri/trackplayer/service/MusicManager.java', 'android/src/main/java/com/guichaguri/trackplayer/service/MusicBinder.java']],
+  // 2026-11-20：JS 的 setVolume 属程序路径（App 用它做逐帧淡入），改走 setProgrammaticVolume，
+  // 不再触发 USER_VOLUME（否则每帧都会清掉焦点策略的 duck 标记）
+  ['setProgrammaticVolume', ['android/src/main/java/com/guichaguri/trackplayer/module/MusicModule.java', 'android/src/main/java/com/guichaguri/trackplayer/service/MusicBinder.java']],
+  ['setVolumeInternal', ['android/src/main/java/com/guichaguri/trackplayer/service/MusicManager.java', 'android/src/main/java/com/guichaguri/trackplayer/service/MusicBinder.java']],
   ['autoResumeAfterInterrupt', ['android/src/main/java/com/guichaguri/trackplayer/service/MusicManager.java', 'src/interfaces.ts']],
   ['hasAudioFocus', ['android/src/main/java/com/guichaguri/trackplayer/service/MusicManager.java']],
   ['QUEUE_ID_SEQ', ['android/src/main/java/com/guichaguri/trackplayer/service/models/Track.java']],

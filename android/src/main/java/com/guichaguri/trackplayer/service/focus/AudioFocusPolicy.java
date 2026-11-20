@@ -66,6 +66,11 @@ public final class AudioFocusPolicy {
     NOISY_DISCONNECTED,
     /** 兜底复核到点：对方始终不还焦点，按"焦点已回到我们手里"收尾 */
     FOCUS_RECHECK,
+    /**
+     * 兜底复核到点但**焦点仍被别人持有**（闹钟、长通话、长视频这类长时间占用）。
+     * 此时不该继续以压低音量出声，应降级为暂停，并把欠账留着等对方释放。
+     */
+    RECHECK_DENIED,
     /** Service 销毁 */
     SERVICE_DESTROY
   }
@@ -229,10 +234,11 @@ public final class AudioFocusPolicy {
           if (!ducked) {
             volumeBeforeDuck = snap.volume;
             ducked = true;
+            out.add(Action.volume(snap.volume * DUCK_RATIO));
           }
+          // 已经在压低时再来一次 TRANSIENT 不得二次压低（否则会叠到 6.25%）
           phase = Phase.DUCKED;
           resumePending = resumePending || snap.intentPlaying();
-          out.add(Action.volume(snap.volume * DUCK_RATIO));
           out.add(Action.recheck(RECHECK_DELAY_MS));
           break;
         }
@@ -330,16 +336,31 @@ public final class AudioFocusPolicy {
       case FOCUS_RECHECK:
         // 对方始终不还焦点（GAIN 没到）。只要还停在打断/压低态，就按"焦点已回到我们手里"收尾：
         // 收回音量、按欠账续播。用户自己按过暂停（userPaused）则不续播。
-        if (phase == Phase.NORMAL || phase == Phase.LOST) break;
+        if (phase == Phase.LOST) break;
         if (ducked) {
           out.add(Action.volume(volumeBeforeDuck));
           ducked = false;
         }
+        // phase 已被 USER_PLAY 清成 NORMAL 但音量还压着：只收音量，不续播
+        if (phase == Phase.NORMAL) break;
         boolean resumeAfterRecheck = resumePending && !userPaused && autoResume;
         resumePending = false;
         userPaused = false;
         phase = Phase.NORMAL;
         if (resumeAfterRecheck) out.add(Action.resume(RESUME_DELAY_MS));
+        break;
+
+      case RECHECK_DENIED:
+        // 对方是长时间占用（闹钟、长通话、长视频），继续压低出声不合适：降级为暂停。
+        // 欠账保留，等对方释放后的 GAIN 或下一次复核成功再恢复。
+        if (phase == Phase.LOST) break;
+        if (ducked) {
+          out.add(Action.volume(volumeBeforeDuck));
+          ducked = false;
+        }
+        resumePending = resumePending || snap.intentPlaying();
+        phase = Phase.INTERRUPTED;
+        out.add(Action.of(A_PAUSE));
         break;
 
       case SERVICE_DESTROY:

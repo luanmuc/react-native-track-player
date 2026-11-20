@@ -69,7 +69,7 @@
   - **R6** 用户改音量走 `MusicManager.setUserVolume()` → 策略清掉"鸭子待恢复"，GAIN 不再用旧值覆盖。
 - 另外两条策略级修正：`CAN_DUCK` 只在**真正在播**时才改音量（暂停态收到 CAN_DUCK 不再把音量改成 20% 卡住）；鸭子目标改**比例**（`音量×0.25`）而非绝对 `0.2`。
 - `onPause()` 不再注销 `noisyReceiver`（注销统一放 `onStop`/`destroy`），否则通话中拔耳机没人拦，挂断续播会从扬声器外放。
-- 门禁：`scripts/check_audio_focus_policy.js` —— javac 编译「策略类 + 场景 runner」后跑断言，覆盖主路径、R1~R6、连续打断、鸭子中被打断、拔线、销毁复位、两个子开关，共 **58 条**（2026-11-19 由 28 条扩充到 37 条；2026-11-20 短打断分级再扩到 58 条，新增用例见下）；静态断言禁止策略类引入 `android.*` 与裸数字状态比较。
+- 门禁：`scripts/check_audio_focus_policy.js` —— javac 编译「策略类 + 场景 runner」后跑断言，覆盖主路径、R1~R6、连续打断、鸭子中被打断、拔线、销毁复位、两个子开关，共 **67 条**（2026-11-19 由 28 条扩充到 37 条；2026-11-20 短打断分级扩到 58 条，通用性补修再扩到 67 条，新增用例见下）；静态断言禁止策略类引入 `android.*` 与裸数字状态比较。
 - **2026-11-19 通读补修 5 条 P1（RT-01~RT-05）**，门禁用例同步扩到 **37 条**：
   - **RT-01 / RT-04 续播窗口不可撤销**（同源）：`A_SCHEDULE_RESUME` 的 `postDelayed` 返回值原来被丢弃，`pause()`/`stop()`/`reset()`/`switchPlayback()` 都无法撤销已排队的续播 → 500ms 内用户按暂停会被到点的 `play()` 覆盖。改为 `MusicManager.scheduleResume()` 保存 `pendingResume` 句柄 + `cancelPendingResume()`，并在 `dispatch()` 的 `USER_PAUSE`/`USER_PLAY`、`switchPlayback()`、`MusicModule.reset()`、`MusicModule.stop()` 四处撤销。
   - **RT-02 连续打断抹掉用户暂停意愿**：`LOSS_TRANSIENT` 原来无条件 `userPaused = false`（`resumePending` 是累积、`userPaused` 却清零）。场景「来电 → 通话中点暂停 → 导航播报再打断 → 挂断」会复活播放。改为与 `resumePending` 一致的累积语义，清零点只保留在 `USER_PLAY`。
@@ -94,7 +94,20 @@
 - `LOSS_CAN_DUCK` 也排兜底复核，治「导航只发 CAN_DUCK 不发 GAIN → 音量卡在 25%」。
 - `NOISY_DISCONNECTED` 减严：`externalDevice == true`（设备还在位）只收回被压低的音量，**不暂停、不清欠账、不置 `userPaused`**，且**不改 phase**（欠账留给 GAIN/复核收尾）；`false` 才走原来的「暂停 + 不续播」。
 - `GAIN` 到达、`USER_PAUSE`/`USER_PLAY`、`resetFocus()`、`onStop()` 都补 `cancelPendingRecheck()`，避免已不需要的复核把状态改回去。
-- 门禁用例 37 → **58 条**，新增 21 条：短打断分级三组（非通话压低不暂停 / 通话仍暂停 / 缓冲中保守暂停）、兜底复核四组（DUCKED 收音量不续播、INTERRUPTED 到点续播、用户暂停过不续播、NORMAL 态空操作）、`CAN_DUCK` 排复核、路由抖动四组（不暂停 / 不清欠账 / 不置用户暂停 / 之后仍能恢复）、以及复核延时与压低系数断言。当前 **58 passed / 0 failed**。
+- 门禁用例 37 → **58 条**，新增 21 条：短打断分级三组（非通话压低不暂停 / 通话仍暂停 / 缓冲中保守暂停）、兜底复核四组（DUCKED 收音量不续播、INTERRUPTED 到点续播、用户暂停过不续播、NORMAL 态空操作）、`CAN_DUCK` 排复核、路由抖动四组（不暂停 / 不清欠账 / 不置用户暂停 / 之后仍能恢复）、以及复核延时与压低系数断言。当前 **67 passed / 0 failed**。
+
+### 通用性补修（2026-11-20，第二轮）
+
+第一轮只针对「蓝牙耳机 + 微信提示音」这一个组合，用户要求**所有场景通用**并主动排查同类缺陷。逐条通读执行链路后又挖出 5 条，全部与设备类型无关，任何场景都会踩：
+
+- **G1 长占用场景仍以低音量出声**（P1）。第一轮的兜底复核只在「申请成功」时收尾，**申请失败仍留在 DUCKED 态**并继续以 25% 音量播。闹钟、长通话、长视频这类长时间占用焦点时，表现为「闹钟在响、音乐也在响（小声）」。修法：新增 `Event.RECHECK_DENIED`，复核失败先 dispatch 它 → 收音量 + 暂停 + **保留欠账**；之后对方释放，`GAIN` 或下一次复核成功再把欠账兑现。重试仍限 `RECHECK_MAX_ATTEMPTS`。
+- **G2 压低期间用户点播放 → 音量永久卡 25%**（P1）。`USER_PLAY` 把 `phase` 清成 `NORMAL` 但没清 `ducked`，而 `FOCUS_RECHECK` 原来「`phase == NORMAL` 直接 return」，于是 `ducked` 与 `volumeBeforeDuck` 悬空，音量一直停在压低值。修法：`FOCUS_RECHECK` 只在 `phase == LOST` 短路；先收音量，再按 `phase` 决定是否续播。
+- **G3 连续两次 `LOSS_TRANSIENT` 会二次压低**（P2）。第一轮的 duck 分支每次都会 `SET_VOLUME(snap.volume × 0.25)`，第二次时 `snap.volume` 已是 25% → 叠到 **6.25%**。修法：`SET_VOLUME` 只在 `!ducked` 时产出一次，`volumeBeforeDuck` 不被覆盖。
+- **G4 `BECOMING_NOISY` 判定线不准**（P1，安全相关）。第一轮只用 `getDevices(GET_DEVICES_OUTPUTS)` 枚举，两个问题：①漏掉 LE Audio 耳机（`TYPE_BLE_HEADSET` / `TYPE_BLE_SPEAKER`，API 31 起）；②枚举会把「已配对但未激活」的设备也算进来，真断线时误判为「在位」→ 不暂停 → **声音从扬声器外放**。修法：先用 `isBluetoothA2dpOn` / `isBluetoothScoOn` / `isWiredHeadsetOn`（deprecated 但反映**当前路由**）判定，再枚举兜底并补 LE / `TYPE_USB_ACCESSORY`；任何异常按「不在位」处理（宁暂停不外放）。
+- **G5 淡入的每一帧都在冒充「用户改音量」**（P1）。App 用 `TrackPlayer.setVolume` 做逐帧淡入（`src/core/player/volumeFade.ts`），而 `MusicModule.setVolume` → `MusicBinder.setUserVolume` → `Event.USER_VOLUME`。于是每次开始播放/切歌，策略都认为「用户接管了音量」并清掉 `ducked`——**打断时压根压不下去**，或压低后被淡入顶回全音量。App 侧没有用户可调的 `player.volume` 控件（用户调的是系统媒体音量 = stream volume，与 `pb.setVolume` 无关），这条事件在生产路径上只有噪声。修法：`MusicModule.setVolume` 改走新增的 `MusicBinder.setProgrammaticVolume` → `MusicManager.setVolumeInternal`（只 `pb.setVolume`，不 dispatch）；`setUserVolume` 保留给未来真的音量控件。`docs-audit` 定制符号表同步加 `setProgrammaticVolume` / `setVolumeInternal`（17 → 19 个符号）。
+- 门禁再扩 9 条（58 → **67**）：二次打断不重复压低 + 原始音量不被覆盖、`USER_PLAY` 后复核仍收音量、`RECHECK_DENIED` 的降级暂停 / 收音量 / 欠账保留 / 释放后恢复、长占用期间用户暂停不复活。
+
+**覆盖范围（这轮之后对所有场景生效）**：外放、有线耳机、USB/Type-C 耳机、蓝牙 A2DP、LE Audio 耳机、蓝牙音箱，以及通话、微信语音、导航播报、闹钟、其他播放器接管、投屏切换。
 
 ### 通知栏基础参数（`01f34b15`）
 
