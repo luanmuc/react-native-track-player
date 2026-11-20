@@ -1,6 +1,7 @@
 # 播放器仓库（fork）全覆盖审计计划 · 2026-11-07
 
-> 对象：`luanmuc/react-native-track-player`（本地 `rntp/`），分支 `v2`，基线 commit **`eceacb5`**
+> 对象：`luanmuc/react-native-track-player`（本地 `rntp/`），分支 `v2`
+> **当前基线（2026-11-20 更新）**：**`3f8546d`**「音频焦点 5 条 P1 收口（RT-01~RT-05）」；App 侧锁定同一 sha。本文件 2026-11-07 初版基线为 `eceacb5`，历史结论保留不删。
 > 目的：对「我们自己的定制」做一次分维度、可判定、可复现的全覆盖审计，不是对上游代码做泛读
 > 方法继承自 App（89 维）与音源（96 维）两轮：**不采信任何历史表述**，逐条回代码定位；能跑的就构造真实运行场景，跑不了的标 `blocked` 并写清原因
 
@@ -10,10 +11,10 @@
 
 | 项 | 数值 | 说明 |
 |---|---|---|
-| TypeScript 源码 | 4 文件 / 730 行（`src/interfaces.ts` 264 行、`src/trackPlayer.ts` 321 行、`src/hooks.ts` 139 行、`src/index.ts` 6 行） | App 直接 import 的契约层 |
-| Android Java | 17 文件 / 3,644 行 | 全部定制落点 |
+| TypeScript 源码 | 4 文件 / **748 行**（2026-11-20 实测；11-07 为 730 行） | App 直接 import 的契约层 |
+| Android Java | **18 文件 / 4,204 行**（2026-11-20 实测；11-07 为 17 文件 / 3,644 行，新增 `MusicManager` 焦点续播句柄等） | 全部定制落点 |
 | iOS Swift | 9 文件 / 1,125 行 | App 不发布 iOS，仅做静态影响评估 |
-| 图标资源 | 20 张（4 状态 × 5 密度） | 模式按钮专用 |
+| 图标资源 | **20 张**（4 状态 × 5 密度，`docs-audit` 实测 `find … -name 'notify_mode_*.png'` = 20；另有 `drawable-nodpi/default_artwork.png` 属上游） | 模式按钮专用 |
 | 构建产物 | `lib/`（不入库，`prepare` 时生成） | 影响 App 侧 tsc 结果 |
 | 文档 | `FORK_NOTES.md`、`README.md`、`CHANGELOG.md`、`docs/`（上游原文） | 定制事实的唯一文字来源 |
 
@@ -246,3 +247,37 @@ git grep -c "setNotificationRepeatMode" a0b2a87 -- android/ src/
 git log --oneline a0b2a87..HEAD          # 落后提交必须逐个看性质
 grep -rh -A1 "@ReactMethod" android/src/main/java --include=*.java | grep -oE "public (void|double|boolean|String) \w+"
 ```
+
+---
+
+## 八、2026-11-19/20 增量审计面（RT-01~RT-05 收口 + 门禁扩张）
+
+> 触发：2026-11-19 通读补修 5 条 P1，全部落在 Android 焦点域内部、对 App 向后兼容。本文件原 72 维仍然有效，本节只补「新增面」与「基线变化」，不重写历史结论。
+
+### 8.1 RT-01~RT-05 的五条新回归（必须双向验证）
+
+| ID | 缺陷（修复前行为） | 修复点 | 守的断言 |
+|---|---|---|---|
+| RT-01 / RT-04 | `A_SCHEDULE_RESUME` 的 `postDelayed` 返回值被丢弃，`pause`/`stop`/`reset`/`switchPlayback` 都无法撤销已排队续播 → 500ms 内用户按暂停，到点仍被 `play()` 覆盖 | `MusicManager.pendingResume` 句柄 + `scheduleResume()`/`cancelPendingResume()`，四处撤销 | AudioFocusPolicyTest 新增 2 条（第二次打断后意愿保留 / GAIN 不续播） |
+| RT-02 | `LOSS_TRANSIENT` 无条件 `userPaused=false`，而 `resumePending` 是累积语义 → 「来电 → 通话中点暂停 → 导航播报再打断 → 挂断」会让音乐自动复活 | 与 `resumePending` 一致的累积语义，清零点只保留 `USER_PLAY` | 新增核心 2 条 + 对照 3 条（无用户暂停仍续播 / `USER_PLAY` 清标记 / 清空后新一轮照常续播） |
+| RT-03 | 三个焦点开关（`handleAudioFocus` / `autoResumeAfterInterrupt` / `duckOnTransientDuck`）只在 `setupPlayer` 读一次，设置页改了不重建播放器就不生效 | `MusicManager.updateFocusOptions(Bundle)` 只覆盖 bundle 里显式给出的键（避免 App 不传时把已关的开关回退成默认 `true`），由 `MusicBinder.updateOptions()` 调用 | 与 App `check_player_service_runtime` 的开关两态对照 |
+| RT-05 | `AudioFocusPolicy.reset()` 清 `ducked` / `volumeBeforeDuck` 却不产出恢复动作，DUCKED 期间 reset 会让音量永久卡 25% | `MusicManager.resetFocus()`（先 `setVolume(getVolumeBeforeDuck())` 再 `reset()`），由 `MusicModule.reset()` 调用 | 新增 3 条（`isDucked` / `volumeBeforeDuck` / DUCK 产出压低动作） |
+
+**红-绿实证**：换回修复前策略类跑同一套用例 → **12 passed / 2 failed**（RT-02 两条红）；修复后 **37 passed / 0 failed**。这是本节唯一的 A 级证据，其余仍按 §二 分级。
+
+### 8.2 门禁与工具变化
+
+| 项 | 变化 | 实跑（2026-11-20） |
+|---|---|---|
+| `scripts/check_audio_focus_policy.js` | 断言 28 → **37 条** | **37 通过 / 0 失败** |
+| `scripts/check-java-syntax.js` | 补 `-sourcepath <java 源码根>`，修「同包引用解析不到 → 级联出误导性 illegal parenthesized expression」的长期误报（`MusicManager.execute()` 的 `switch (action.type)` 曾被长期判红）；注入缺分号变异仍被抓 | **0 条语法错误**；5854 条类路径缺失（无 Android SDK）按预期不判红 |
+| `scripts/check_truth_gates.js` | G1 队列 ID 单调（1 处 `AtomicLong`）/ G2 状态比较无裸数字 / G3 AGP 8.6.1 自洽 / G4 `postDelayed` 均具名常量 | **4 条全一致** |
+
+### 8.3 当前缺口（相对本计划 72 维）
+
+| 缺口 | 现状 | 处置 |
+|---|---|---|
+| 压力测试计划 | 本仓此前**没有** `STRESS_PLAN.md` | 2026-11-20 已新建，见 `docs/STRESS_PLAN.md` |
+| 单元测试框架 | 无 `__tests__`/`test` 目录，只有 2 个脚本化门禁（java 语法 + 焦点策略） | 保持脚本形态；新增纯逻辑优先抽到策略类，再进 `AudioFocusPolicyTest` |
+| 真机 L4（通知栏渲染/点击/焦点抢占/僵尸通知/图标观感） | 无 adb / 无 KVM | 继续 `blocked`，不写成通过 |
+| 上游全量 diff | 仓库无 upstream remote 与完整 tag 基线 | 只做定制集中度定性（H6 降级），不宣称覆盖率 |
