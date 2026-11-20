@@ -20,6 +20,11 @@ public final class AudioFocusPolicyTest {
   private static final Snapshot PLAYING_AT_60 = new Snapshot(AudioFocusPolicy.PS_PLAYING, true, true, 0.6f);
   private static final Snapshot BUFFERING = new Snapshot(AudioFocusPolicy.PS_BUFFERING, true, false, 1.0f);
   private static final Snapshot PAUSED = new Snapshot(AudioFocusPolicy.PS_PAUSED, false, false, 1.0f);
+  /** 非通话场景（微信通知音、应用提示音）：不该让整首歌停下来 */
+  private static final Snapshot PLAYING_IDLE = new Snapshot(AudioFocusPolicy.PS_PLAYING, true, true, 0.6f, false, false);
+  private static final Snapshot BUFFERING_IDLE = new Snapshot(AudioFocusPolicy.PS_BUFFERING, true, false, 1.0f, false, false);
+  /** 蓝牙耳机仍在位（BECOMING_NOISY 属路由抖动） */
+  private static final Snapshot PLAYING_BT = new Snapshot(AudioFocusPolicy.PS_PLAYING, true, true, 0.6f, false, true);
 
   public static void main(String[] args) {
     System.out.println("AudioFocusPolicy 场景断言");
@@ -180,6 +185,77 @@ public final class AudioFocusPolicyTest {
     a = p.handle(Event.LOSS_CAN_DUCK, PLAYING_AT_60);
     expect("开关：关闭降音量时不改音量", !has(a, AudioFocusPolicy.A_SET_VOLUME));
 
+    // ═══ 2026-11 短打断分级 ═══
+    // 18. 非通话 + 播放中收到 TRANSIENT（微信提示音）→ 压低继续播，不暂停
+    p = new AudioFocusPolicy();
+    a = p.handle(Event.LOSS_TRANSIENT, PLAYING_IDLE);
+    expect("短打断：非通话时压低而不是暂停", has(a, AudioFocusPolicy.A_SET_VOLUME) && !has(a, AudioFocusPolicy.A_PAUSE));
+    expect("短打断：压低值是原音量×系数", Math.abs(volumeOf(a) - 0.6f * AudioFocusPolicy.DUCK_RATIO) < 0.001f);
+    expect("短打断：同时排兜底复核", has(a, AudioFocusPolicy.A_SCHEDULE_RECHECK));
+    expect("短打断：复核延时取 RECHECK_DELAY_MS", recheckOf(a) == AudioFocusPolicy.RECHECK_DELAY_MS);
+
+    // 19. 非通话但有兜底：对方不还焦点 → RECHECK 收回音量，播放不中断
+    p = new AudioFocusPolicy();
+    p.handle(Event.LOSS_TRANSIENT, PLAYING_IDLE);
+    a = p.handle(Event.FOCUS_RECHECK, PLAYING_IDLE);
+    expect("短打断：复核收回音量", Math.abs(volumeOf(a) - 0.6f) < 0.001f);
+    expect("短打断：复核后回到 NORMAL", p.getPhase() == AudioFocusPolicy.Phase.NORMAL);
+
+    // 20. 通话中收到 TRANSIENT 必须让路（不能被短打断分级放过去）
+    p = new AudioFocusPolicy();
+    a = p.handle(Event.LOSS_TRANSIENT, PLAYING);
+    expect("短打断：通话中仍然暂停", has(a, AudioFocusPolicy.A_PAUSE));
+    expect("短打断：通话中也排兜底复核", has(a, AudioFocusPolicy.A_SCHEDULE_RECHECK));
+
+    // 21. 非通话但缓冲中（没真在出声）→ 保守暂停，不擅改音量
+    p = new AudioFocusPolicy();
+    a = p.handle(Event.LOSS_TRANSIENT, BUFFERING_IDLE);
+    expect("短打断：缓冲中不压音量", !has(a, AudioFocusPolicy.A_SET_VOLUME));
+    expect("短打断：缓冲中暂停并等兜底", has(a, AudioFocusPolicy.A_PAUSE) && has(a, AudioFocusPolicy.A_SCHEDULE_RECHECK));
+
+    // 22. CAN_DUCK 也排兜底（导航只发 CAN_DUCK 不发 GAIN 的老坑）
+    p = new AudioFocusPolicy();
+    a = p.handle(Event.LOSS_CAN_DUCK, PLAYING_AT_60);
+    expect("CAN_DUCK：排队兜底防止音量卡在低位", has(a, AudioFocusPolicy.A_SCHEDULE_RECHECK));
+
+    // 23. 兜底复核：从 DUCKED 收回音量，但不触发续播（本来就没停）
+    p = new AudioFocusPolicy();
+    p.handle(Event.LOSS_CAN_DUCK, PLAYING_AT_60);
+    a = p.handle(Event.FOCUS_RECHECK, PLAYING_AT_60);
+    expect("复核：DUCKED 收回原音量", Math.abs(volumeOf(a) - 0.6f) < 0.001f);
+    expect("复核：DUCKED 不触发续播", !has(a, AudioFocusPolicy.A_SCHEDULE_RESUME));
+
+    // 24. 兜底复核：从 INTERRUPTED 续播（这就是"暂停了必须会恢复"的保底）
+    p = new AudioFocusPolicy();
+    p.handle(Event.LOSS_TRANSIENT, PLAYING);
+    a = p.handle(Event.FOCUS_RECHECK, PAUSED);
+    expect("复核：INTERRUPTED 到点续播", has(a, AudioFocusPolicy.A_SCHEDULE_RESUME));
+    expect("复核：续播延时仍是 500ms", delayOf(a) == AudioFocusPolicy.RESUME_DELAY_MS);
+
+    // 25. 兜底复核：用户自己按过暂停则不续播
+    p = new AudioFocusPolicy();
+    p.handle(Event.LOSS_TRANSIENT, PLAYING);
+    p.handle(Event.USER_PAUSE, PAUSED);
+    a = p.handle(Event.FOCUS_RECHECK, PAUSED);
+    expect("复核：用户暂停过则不续播", !has(a, AudioFocusPolicy.A_SCHEDULE_RESUME));
+
+    // 26. 兜底复核在 NORMAL 态是空操作（GAIN 已经处理过的场景不能重复恢复）
+    p = new AudioFocusPolicy();
+    p.handle(Event.LOSS_TRANSIENT, PLAYING);
+    p.handle(Event.GAIN, PAUSED);
+    a = p.handle(Event.FOCUS_RECHECK, PAUSED);
+    expect("复核：NORMAL 态空操作", a.isEmpty());
+
+    // 27. 蓝牙还连着却收到 BECOMING_NOISY（路由抖动）→ 不得暂停、不得清欠账
+    p = new AudioFocusPolicy();
+    p.handle(Event.LOSS_TRANSIENT, PLAYING_BT);
+    a = p.handle(Event.NOISY_DISCONNECTED, PLAYING_BT);
+    expect("路由抖动：不暂停", !has(a, AudioFocusPolicy.A_PAUSE));
+    expect("路由抖动：不清掉续播欠账", p.isResumePending());
+    expect("路由抖动：不置用户暂停", !p.isUserPaused());
+    a = p.handle(Event.FOCUS_RECHECK, PAUSED);
+    expect("路由抖动：之后仍能恢复", has(a, AudioFocusPolicy.A_SCHEDULE_RESUME));
+
     System.out.println("\n结果：" + pass + " 通过 / " + fail + " 失败");
     if (fail > 0) System.exit(1);
   }
@@ -200,6 +276,11 @@ public final class AudioFocusPolicyTest {
 
   private static long delayOf(List<Action> list) {
     for (Action x : list) if (x.type == AudioFocusPolicy.A_SCHEDULE_RESUME) return x.delayMs;
+    return -1L;
+  }
+
+  private static long recheckOf(List<Action> list) {
+    for (Action x : list) if (x.type == AudioFocusPolicy.A_SCHEDULE_RECHECK) return x.delayMs;
     return -1L;
   }
 

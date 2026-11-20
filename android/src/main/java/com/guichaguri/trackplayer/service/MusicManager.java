@@ -12,6 +12,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.WifiLock;
@@ -66,6 +67,11 @@ public class MusicManager {
     // RT-04：已排队的续播任务句柄。原来是 `getHandler().postDelayed(...)` 丢弃返回值，
     // 于是用户暂停 / 切歌 / reset / 划掉通知都无法撤销，到点仍会把状态拉回播放（RT-01 同源）。
     private Runnable pendingResume = null;
+    /** 兜底复核任务句柄（对方不还焦点时到点主动重申请） */
+    private Runnable pendingRecheck = null;
+    /** 兜底复核已重试次数，避免对方长期占用时无限自我打断 */
+    private int recheckAttempts = 0;
+    private static final int RECHECK_MAX_ATTEMPTS = 2;
 
     // 两个子行为开关（仅在 handleAudioFocus 为 true 时才有意义）
     private boolean autoResumeAfterInterrupt = true;   // 临时打断结束后是否自动续播
@@ -133,7 +139,51 @@ public class MusicManager {
     private AudioFocusPolicy.Snapshot snapshot() {
         ExoPlayback pb = playback;
         if (pb == null) return new AudioFocusPolicy.Snapshot(AudioFocusPolicy.PS_NONE, false, false, 1f);
-        return new AudioFocusPolicy.Snapshot(pb.getState(), pb.getPlayWhenReady(), pb.isPlayingNow(), pb.getVolume());
+        return new AudioFocusPolicy.Snapshot(pb.getState(), pb.getPlayWhenReady(), pb.isPlayingNow(), pb.getVolume(),
+                isInCall(), hasExternalAudioDevice());
+    }
+
+    /**
+     * 是否处于通话/铃声场景。通话必须让路（暂停），通知音这类非通话短打断了不该让整首歌停下。
+     * RINGTONE 也计入：来电响铃期间 getMode() 就是 MODE_RINGTONE。
+     */
+    private boolean isInCall() {
+        if (audioManager == null) return false;
+        int mode = audioManager.getMode();
+        return mode == AudioManager.MODE_IN_CALL
+                || mode == AudioManager.MODE_IN_COMMUNICATION
+                || mode == AudioManager.MODE_RINGTONE;
+    }
+
+    /**
+     * 当前是否仍有外部音频设备在位（蓝牙 A2DP/SCO、有线耳机、USB 耳机）。
+     * 用来区分「真拔线/断蓝牙」与「蓝牙路由抖动误发的 BECOMING_NOISY」——
+     * 后者若照旧按拔线处理，会把音乐永久停在暂停态。
+     */
+    private boolean hasExternalAudioDevice() {
+        if (audioManager == null) return false;
+        AudioDeviceInfo[] outs;
+        try {
+            outs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS);
+        } catch (Exception e) {
+            return false;
+        }
+        if (outs == null) return false;
+        for (AudioDeviceInfo d : outs) {
+            switch (d.getType()) {
+                case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP:
+                case AudioDeviceInfo.TYPE_BLUETOOTH_SCO:
+                case AudioDeviceInfo.TYPE_WIRED_HEADSET:
+                case AudioDeviceInfo.TYPE_WIRED_HEADPHONES:
+                case AudioDeviceInfo.TYPE_USB_HEADSET:
+                case AudioDeviceInfo.TYPE_USB_DEVICE:
+                case AudioDeviceInfo.TYPE_USB_ACCESSORY:
+                    return true;
+                default:
+                    break;
+            }
+        }
+        return false;
     }
 
     /** 事件入口：开关关闭时完全不接管；每次同步两个子开关（改设置后无需重建策略） */
@@ -143,8 +193,11 @@ public class MusicManager {
         // 注意：Event 枚举里没有 USER_STOP —— stop 路径在 MusicModule.stop() 里直接撤销。
         if (event == AudioFocusPolicy.Event.USER_PAUSE || event == AudioFocusPolicy.Event.USER_PLAY) {
             cancelPendingResume();
+            cancelPendingRecheck();
         }
         if (!handleAudioFocus) return;
+        // GAIN 到了就不需要兜底了
+        if (event == AudioFocusPolicy.Event.GAIN) cancelPendingRecheck();
         focusPolicy.configure(autoResumeAfterInterrupt, duckOnTransientDuck);
         execute(focusPolicy.handle(event, snapshot()));
     }
@@ -178,6 +231,46 @@ public class MusicManager {
     }
 
     /**
+     * 兜底复核（2026-11 增加）：通知音/导航这类短打断，抢焦点的一方不一定会 abandonAudioFocus，
+     * AUDIOFOCUS_GAIN 就永远不来，播放器会一直停在暂停态或 25% 音量。
+     * 到点后先放弃再重新申请焦点——hasAudioFocus 只是本地记账，对方不还时它仍是 true，
+     * 直接 request 是空操作，必须先 abandon 才能让系统真的重新判给我们。
+     */
+    private void scheduleRecheck(long delayMs) {
+        Handler h = getHandler();
+        if (h == null) return;
+        cancelPendingRecheck();
+        pendingRecheck = () -> {
+            pendingRecheck = null;
+            if (playback == null || !handleAudioFocus) return;
+            AudioFocusPolicy.Phase phase = focusPolicy.getPhase();
+            if (phase == AudioFocusPolicy.Phase.NORMAL || phase == AudioFocusPolicy.Phase.LOST) return;
+            abandonAudioFocus();
+            if (requestAudioFocus()) {
+                recheckAttempts = 0;
+                dispatch(AudioFocusPolicy.Event.FOCUS_RECHECK);
+                return;
+            }
+            if (recheckAttempts < RECHECK_MAX_ATTEMPTS) {
+                recheckAttempts++;
+                scheduleRecheck(delayMs);
+            } else {
+                recheckAttempts = 0;
+            }
+        };
+        h.postDelayed(pendingRecheck, delayMs);
+    }
+
+    /** 撤销兜底复核：用户接管、GAIN 真的到了、销毁时都要调 */
+    private void cancelPendingRecheck() {
+        if (pendingRecheck == null) return;
+        Handler h = getHandler();
+        if (h != null) h.removeCallbacks(pendingRecheck);
+        pendingRecheck = null;
+        recheckAttempts = 0;
+    }
+
+    /**
      * RT-03：三个焦点开关的运行时更新通道。
      * 原来只在 createLocalPlayback（setupPlayer）读一次，设置页改了不重建播放器就完全不生效。
      * 只覆盖 bundle 里显式给出的键，避免 App 不传时把用户已关的开关回退成默认 true。
@@ -204,6 +297,8 @@ public class MusicManager {
         if (pb != null && focusPolicy.isDucked()) {
             pb.setVolume(focusPolicy.getVolumeBeforeDuck());
         }
+        cancelPendingResume();
+        cancelPendingRecheck();
         focusPolicy.reset();
     }
 
@@ -230,6 +325,9 @@ public class MusicManager {
                     break;
                 case AudioFocusPolicy.A_SCHEDULE_RESUME:
                     scheduleResume(action.delayMs);
+                    break;
+                case AudioFocusPolicy.A_SCHEDULE_RECHECK:
+                    scheduleRecheck(action.delayMs);
                     break;
                 case AudioFocusPolicy.A_NOTIFY_FOCUS_DENIED:
                     Log.w(Utils.LOG, "audio focus denied while playing, pause instead");
@@ -442,6 +540,7 @@ public class MusicManager {
         if(wifiLock != null && wifiLock.isHeld()) wifiLock.release();
 
         abandonAudioFocus(); // lx-music fork: 释放音频焦点
+        cancelPendingRecheck(); // 兜底复核一并撤销，避免 stopped 态再自己抢焦点
 
         if (playback != null && playback.shouldAutoUpdateMetadata())
             metadata.setActive(false);

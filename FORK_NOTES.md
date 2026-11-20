@@ -7,7 +7,7 @@
 ## 分支与基线
 
 - 开发分支：`v2`
-- App 侧当前锁定的 commit：`3f8546d`（2026-11-19 音频焦点 RT-01~RT-05 五条 P1 收口后升上来；此前锁 `12049cd`、更早 `b9ecdab2` 含音频焦点 B 方案状态机。音高桥方法在 `536521c`，App 侧尚未锁到它——`setPlaybackPitch` 对旧 sha 有存在性守卫，装 `b9ecdab2` 时静默跳过、不崩；锁定 `536521c` 后自动生效。更早的 `82e4e21`（b78 起）从 `eceacb5` 升上来，取的是本 fork 2026-11-07 全覆盖审计的修复：焦点续播不覆盖用户暂停、`contentIntent` 补 `FLAG_IMMUTABLE`、服务挂 `PLAYER_CONTROL` 权限、耳机拔出复位音量、归口注释补齐。`eceacb5` 是更早的 b75 基线，本身只追加了 `quality` / `subSource` 两个可选类型字段、未改定制逻辑）
+- App 侧当前锁定的 commit：`1e99d1d`（2026-11-19 音频焦点 RT-01~RT-05 五条 P1 收口后升上来；此前锁 `12049cd`、更早 `b9ecdab2` 含音频焦点 B 方案状态机。音高桥方法在 `536521c`，App 侧尚未锁到它——`setPlaybackPitch` 对旧 sha 有存在性守卫，装 `b9ecdab2` 时静默跳过、不崩；锁定 `536521c` 后自动生效。更早的 `82e4e21`（b78 起）从 `eceacb5` 升上来，取的是本 fork 2026-11-07 全覆盖审计的修复：焦点续播不覆盖用户暂停、`contentIntent` 补 `FLAG_IMMUTABLE`、服务挂 `PLAYER_CONTROL` 权限、耳机拔出复位音量、归口注释补齐。`eceacb5` 是更早的 b75 基线，本身只追加了 `quality` / `subSource` 两个可选类型字段、未改定制逻辑）
 - 本文件里其余各条后面的短 sha 是**该条定制落地时的历史提交**，不是当前基线，改动时以本条为准
 
 > 上游官方已不再维护 `v2` 分支（最新为 v5，Android 侧已重写为 Kotlin）。
@@ -69,7 +69,7 @@
   - **R6** 用户改音量走 `MusicManager.setUserVolume()` → 策略清掉"鸭子待恢复"，GAIN 不再用旧值覆盖。
 - 另外两条策略级修正：`CAN_DUCK` 只在**真正在播**时才改音量（暂停态收到 CAN_DUCK 不再把音量改成 20% 卡住）；鸭子目标改**比例**（`音量×0.25`）而非绝对 `0.2`。
 - `onPause()` 不再注销 `noisyReceiver`（注销统一放 `onStop`/`destroy`），否则通话中拔耳机没人拦，挂断续播会从扬声器外放。
-- 门禁：`scripts/check_audio_focus_policy.js` —— javac 编译「策略类 + 场景 runner」后跑断言，覆盖主路径、R1~R6、连续打断、鸭子中被打断、拔线、销毁复位、两个子开关，共 **37 条**（2026-11-19 由 28 条扩充，新增用例见下）；静态断言禁止策略类引入 `android.*` 与裸数字状态比较。
+- 门禁：`scripts/check_audio_focus_policy.js` —— javac 编译「策略类 + 场景 runner」后跑断言，覆盖主路径、R1~R6、连续打断、鸭子中被打断、拔线、销毁复位、两个子开关，共 **58 条**（2026-11-19 由 28 条扩充到 37 条；2026-11-20 短打断分级再扩到 58 条，新增用例见下）；静态断言禁止策略类引入 `android.*` 与裸数字状态比较。
 - **2026-11-19 通读补修 5 条 P1（RT-01~RT-05）**，门禁用例同步扩到 **37 条**：
   - **RT-01 / RT-04 续播窗口不可撤销**（同源）：`A_SCHEDULE_RESUME` 的 `postDelayed` 返回值原来被丢弃，`pause()`/`stop()`/`reset()`/`switchPlayback()` 都无法撤销已排队的续播 → 500ms 内用户按暂停会被到点的 `play()` 覆盖。改为 `MusicManager.scheduleResume()` 保存 `pendingResume` 句柄 + `cancelPendingResume()`，并在 `dispatch()` 的 `USER_PAUSE`/`USER_PLAY`、`switchPlayback()`、`MusicModule.reset()`、`MusicModule.stop()` 四处撤销。
   - **RT-02 连续打断抹掉用户暂停意愿**：`LOSS_TRANSIENT` 原来无条件 `userPaused = false`（`resumePending` 是累积、`userPaused` 却清零）。场景「来电 → 通话中点暂停 → 导航播报再打断 → 挂断」会复活播放。改为与 `resumePending` 一致的累积语义，清零点只保留在 `USER_PLAY`。
@@ -77,6 +77,24 @@
   - **RT-05 `reset()` 不恢复被压低的音量**：`AudioFocusPolicy.reset()` 清掉 `ducked` 与 `volumeBeforeDuck` 却不产出恢复动作，DUCKED 期间调用会让音量永久卡在 25%。新增 `MusicManager.resetFocus()`（先 `pb.setVolume(getVolumeBeforeDuck())` 再 `reset()`），由 `MusicModule.reset()` 调用。
   - 门禁新增 9 条用例：RT-02 的「第二次打断后意愿保留 / GAIN 不续播」+ 三条对照（无用户暂停仍续播、USER_PLAY 清标记、清空后新一轮照常续播）+ RT-05 的三条（`isDucked` / `volumeBeforeDuck` / DUCK 产出压低动作）。红-绿已验：换成修复前的策略类跑同一套用例，RT-02 两条必红（`12 passed / 2 failed`），修复后 `37 passed / 0 failed`。
 - **`check-java-syntax.js` 补 `-sourcepath`（2026-11-19）**：原实现逐文件 `javac` 且不给源码根，同包引用解析不到时会级联出误导性的 `illegal parenthesized expression`（`MusicManager.execute()` 的 `switch (action.type)` 就因此长期被判红）。加 `-sourcepath <java 源码根>` 后误报消失（5854 条类路径缺失仍按预期不判红），并用「注入缺分号」做过变异验证，确认仍能抓到真语法错误。
+
+### 短打断分级与兜底复核（2026-11-20）
+
+真机反馈：蓝牙耳机听歌时来一条微信消息，音乐被**暂停**且**不再自动恢复**（提示音只响一秒）。定位到三个缺口，全部落在「把极短打断当成完整通话打断」这一类：
+
+- **缺口一：`LOSS_TRANSIENT` 一律暂停**。通知音/提示音只要响一秒，播放器就 `PAUSE`，然后**干等 `AUDIOFOCUS_GAIN`**。而 GAIN `只在对方调用 `abandonAudioFocus` 时才会下发：对方不还（厂商 ROM 常见），音乐就永久停在暂停态。旧实现没有任何兜底。
+- **缺口二：`CAN_DUCK` 之后没有收尾**。代码注释自己写了「很多导航实现只发 CAN_DUCK 不发 GAIN，音量会一直卡在低位」，但并没有对应机制。
+- **缺口三：`NOISY_DISCONNECTED` 一律按拔线处理**。蓝牙路由抖动也会发 `ACTION_AUDIO_BECOMING_NOISY`，此时设备其实还连着，却被置 `userPaused = true` + 清欠账 → **永久不恢复**。
+
+改法（`AudioFocusPolicy.java` + `MusicManager.java`）：
+
+- `Snapshot` 新增两个字段：`inCall`（`AudioManager.getMode()` ∈ {IN_CALL, IN_COMMUNICATION, RINGTONE}）与 `externalDevice`（输出设备里是否有蓝牙 A2DP/SCO、有线耳机、USB 耳机）。4 参构造保留，默认 `inCall=true`、`externalDevice=false`（保守按通话 + 已断开处理，旧用例语义不变）。
+- `LOSS_TRANSIENT` 分级：**非通话且真在出声** → 压低继续播（`音量×0.25`，与导航同语义），不暂停；**通话中或缓冲中** → 照旧暂停。两条分支都排一次兜底复核。
+- 新增事件 `FOCUS_RECHECK` 与动作 `A_SCHEDULE_RECHECK`。`MusicManager.scheduleRecheck()` 用 `RECHECK_DELAY_MS = 3000` 到点后**先 `abandonAudioFocus()` 再 `requestAudioFocus()`**——`hasAudioFocus` 只是本地记账，对方不还时它仍是 `true`，直接 request 是空操作。重申请成功回灌 `FOCUS_RECHECK`：收回被压低的音量、按欠账续播（`userPaused` 时不续播）；失败最多重试 `RECHECK_MAX_ATTEMPTS = 2` 次，避免对方长期占用时无休止自我打断。
+- `LOSS_CAN_DUCK` 也排兜底复核，治「导航只发 CAN_DUCK 不发 GAIN → 音量卡在 25%」。
+- `NOISY_DISCONNECTED` 减严：`externalDevice == true`（设备还在位）只收回被压低的音量，**不暂停、不清欠账、不置 `userPaused`**，且**不改 phase**（欠账留给 GAIN/复核收尾）；`false` 才走原来的「暂停 + 不续播」。
+- `GAIN` 到达、`USER_PAUSE`/`USER_PLAY`、`resetFocus()`、`onStop()` 都补 `cancelPendingRecheck()`，避免已不需要的复核把状态改回去。
+- 门禁用例 37 → **58 条**，新增 21 条：短打断分级三组（非通话压低不暂停 / 通话仍暂停 / 缓冲中保守暂停）、兜底复核四组（DUCKED 收音量不续播、INTERRUPTED 到点续播、用户暂停过不续播、NORMAL 态空操作）、`CAN_DUCK` 排复核、路由抖动四组（不暂停 / 不清欠账 / 不置用户暂停 / 之后仍能恢复）、以及复核延时与压低系数断言。当前 **58 passed / 0 failed**。
 
 ### 通知栏基础参数（`01f34b15`）
 

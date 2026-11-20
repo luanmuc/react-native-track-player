@@ -33,6 +33,15 @@ public final class AudioFocusPolicy {
   public static final long RESUME_DELAY_MS = 500L;
   /** 压低目标：相对当前音量的系数（不是绝对值，避免用户音量 60% 与 100% 降幅不一致） */
   public static final float DUCK_RATIO = 0.25f;
+  /**
+   * GAIN 缺失时的兜底复核延时。
+   *
+   * <p>背景：微信/系统通知音这类打断只响 1~3 秒，抢焦点的一方**不一定会调用
+   * abandonAudioFocus**（厂商 ROM 尤其如此），于是 AUDIOFOCUS_GAIN 永远不到，
+   * 播放器就一直停在暂停态或 25% 音量。这里排一次延时复核，由执行器先放弃再重新
+   * 申请焦点，用"系统真的判给我们"来替代"等对方还"。
+   */
+  public static final long RECHECK_DELAY_MS = 3000L;
 
   public enum Event {
     /** onPlay 时申请焦点成功 */
@@ -55,6 +64,8 @@ public final class AudioFocusPolicy {
     USER_VOLUME,
     /** 耳机拔出 / 蓝牙断开 */
     NOISY_DISCONNECTED,
+    /** 兜底复核到点：对方始终不还焦点，按"焦点已回到我们手里"收尾 */
+    FOCUS_RECHECK,
     /** Service 销毁 */
     SERVICE_DESTROY
   }
@@ -81,12 +92,28 @@ public final class AudioFocusPolicy {
     public final boolean isPlaying;
     /** 当前播放器音量（0..1） */
     public final float volume;
+    /**
+     * 是否处于通话/铃声场景（AudioManager.getMode() ∈ {IN_CALL, IN_COMMUNICATION, RINGTONE}）。
+     * 通话必须让路（暂停），非通话的短打断不该让整首歌停下来。 */
+    public final boolean inCall;
+    /**
+     * 当前是否仍有外部音频设备在位（蓝牙 A2DP/SCO、有线耳机、USB 耳机等）。
+     * 用于区分"真的拔线/断蓝牙"与"蓝牙路由抖动误发的 BECOMING_NOISY"。 */
+    public final boolean externalDevice;
 
+    /** 兼容旧调用方：按通话级打断处理（保守暂停），且视为外部设备已不在 */
     public Snapshot(int state, boolean playWhenReady, boolean isPlaying, float volume) {
+      this(state, playWhenReady, isPlaying, volume, true, false);
+    }
+
+    public Snapshot(int state, boolean playWhenReady, boolean isPlaying, float volume,
+                    boolean inCall, boolean externalDevice) {
       this.state = state;
       this.playWhenReady = playWhenReady;
       this.isPlaying = isPlaying;
       this.volume = volume;
+      this.inCall = inCall;
+      this.externalDevice = externalDevice;
     }
 
     /** 用户意图是「在播」：真在播、准备播、或缓冲中。这是续播判定的唯一依据 */
@@ -105,6 +132,8 @@ public final class AudioFocusPolicy {
   public static final int A_SCHEDULE_RESUME = 6;
   /** 申请焦点失败：不要播放，并给出提示 */
   public static final int A_NOTIFY_FOCUS_DENIED = 7;
+  /** 延时兜底复核：执行器负责到点放弃并重新申请焦点，成功则回灌 FOCUS_RECHECK */
+  public static final int A_SCHEDULE_RECHECK = 8;
 
   public static final class Action {
     public final int type;
@@ -129,6 +158,10 @@ public final class AudioFocusPolicy {
       return new Action(A_SCHEDULE_RESUME, 0f, delayMs);
     }
 
+    static Action recheck(long delayMs) {
+      return new Action(A_SCHEDULE_RECHECK, 0f, delayMs);
+    }
+
     @Override public String toString() {
       switch (type) {
         case A_PAUSE: return "PAUSE";
@@ -138,6 +171,7 @@ public final class AudioFocusPolicy {
         case A_ABANDON_FOCUS: return "ABANDON_FOCUS";
         case A_SCHEDULE_RESUME: return "SCHEDULE_RESUME(" + delayMs + "ms)";
         case A_NOTIFY_FOCUS_DENIED: return "NOTIFY_FOCUS_DENIED";
+        case A_SCHEDULE_RECHECK: return "SCHEDULE_RECHECK(" + delayMs + "ms)";
         default: return "UNKNOWN(" + type + ")";
       }
     }
@@ -188,13 +222,29 @@ public final class AudioFocusPolicy {
         break;
 
       case LOSS_TRANSIENT:
-        // 累积而不是覆盖：第二次打断时播放器已是 PAUSED，直接赋值会把第一次的欠账抹掉
+        // 短打断分级（2026-11 增加）：通知音、提示音这类打断只响一秒，把整首歌停下来
+        // 再指望对方还焦点过于脆弱——对方不 abandon 就等于永久暂停。非通话场景改为
+        // 压低继续播（与导航播报同语义），并排一次兜底复核。
+        if (!snap.inCall && duckEnabled && snap.isPlaying) {
+          if (!ducked) {
+            volumeBeforeDuck = snap.volume;
+            ducked = true;
+          }
+          phase = Phase.DUCKED;
+          resumePending = resumePending || snap.intentPlaying();
+          out.add(Action.volume(snap.volume * DUCK_RATIO));
+          out.add(Action.recheck(RECHECK_DELAY_MS));
+          break;
+        }
+        // 通话/无 duck 能力：必须让路。累积而不是覆盖：第二次打断时播放器已是 PAUSED，
+        // 直接赋值会把第一次的欠账抹掉
         resumePending = resumePending || snap.intentPlaying();
         // RT-02：userPaused 同样必须"累积"而非清零。连续打断场景下（来电 → 通话中点暂停 →
         // 导航播报再打断），清零点会让用户在第一次打断里的暂停意愿被第二次打断抹掉，
         // GAIN 时 shouldResume 判定通过，音乐自动响起。清零点只在 USER_PLAY 里保留。
         phase = Phase.INTERRUPTED;
         out.add(Action.of(A_PAUSE));
+        out.add(Action.recheck(RECHECK_DELAY_MS));
         break;
 
       case LOSS_CAN_DUCK:
@@ -206,6 +256,8 @@ public final class AudioFocusPolicy {
         ducked = true;
         phase = Phase.DUCKED;
         out.add(Action.volume(snap.volume * DUCK_RATIO));
+        // 很多导航实现只发 CAN_DUCK 不发 GAIN，音量会一直卡在低位——兜底复核负责收回音量
+        out.add(Action.recheck(RECHECK_DELAY_MS));
         break;
 
       case GAIN:
@@ -254,7 +306,17 @@ public final class AudioFocusPolicy {
         break;
 
       case NOISY_DISCONNECTED:
-        // 拔线/断蓝牙：恢复被压低的音量，并明确不续播（否则挂断电话会从扬声器外放）
+        // 蓝牙路由抖动也会发 BECOMING_NOISY，但设备其实还连着。此时若照旧置 userPaused，
+        // 音乐会被永久停在暂停态（这是"暂停后不自动恢复"的第二个来源）。
+        if (snap.externalDevice) {
+          if (ducked) {
+            out.add(Action.volume(volumeBeforeDuck));
+            ducked = false;
+          }
+          // phase 不动：若原本还欠一次续播，抖动不该把欠账悬空（交给 GAIN/复核收尾）
+          break;
+        }
+        // 真拔线/断开：恢复被压低的音量，并明确不续播（否则挂断电话会从扬声器外放）
         if (ducked) {
           out.add(Action.volume(volumeBeforeDuck));
           ducked = false;
@@ -263,6 +325,21 @@ public final class AudioFocusPolicy {
         userPaused = true;
         if (phase == Phase.DUCKED || phase == Phase.INTERRUPTED) phase = Phase.NORMAL;
         out.add(Action.of(A_PAUSE));
+        break;
+
+      case FOCUS_RECHECK:
+        // 对方始终不还焦点（GAIN 没到）。只要还停在打断/压低态，就按"焦点已回到我们手里"收尾：
+        // 收回音量、按欠账续播。用户自己按过暂停（userPaused）则不续播。
+        if (phase == Phase.NORMAL || phase == Phase.LOST) break;
+        if (ducked) {
+          out.add(Action.volume(volumeBeforeDuck));
+          ducked = false;
+        }
+        boolean resumeAfterRecheck = resumePending && !userPaused && autoResume;
+        resumePending = false;
+        userPaused = false;
+        phase = Phase.NORMAL;
+        if (resumeAfterRecheck) out.add(Action.resume(RESUME_DELAY_MS));
         break;
 
       case SERVICE_DESTROY:
