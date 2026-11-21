@@ -37,9 +37,9 @@
 | P4 | 静态不变量 | `node scripts/check_truth_gates.js` | 4 条（G1~G4） | 全一致 | L0 |
 | P5 | 文档镜像 | `node scripts/docs-audit.js --dry-run` | 全部 `.md` | 0 待处理 / 0 硬失败 | L0 |
 | P6 | 变异注入（红证） | 手工 3 处注入后跑 P2 | 3 个变异体 | **3/3 被抓**（详见 §3） | L2 |
-| P7 | 集成落地 | 打 App APK + 解包 | 1 次 | APK 内含 `notify_mode_*` 4 态 × 6 密度 + `setNotificationRepeatMode` 等方法 | L3 |
+| P7 | 集成落地 | App CI 构建后跑 `scripts/verify_apk_integration.js`（解包 APK 读 `resources.arsc` 与 `classes*.dex` 字符串池） | 每次构建 | **9 条全绿**（b191 实测）：`notify_mode_loop/order/random/single` 四个资源名 + `setNotificationRepeatMode` + `setPitch` + `resources.arsc`/`classes.dex` 存在性 | L3 → **已执行** |
 
-**当前实测（2026-11-20）**：P1 **0 错**（5854 条类路径缺失属预期）；P2 **67/0**；P4 **4 条全一致**；P3/P5/P7 见 §4 记录。
+**当前实测（2026-11-20）**：P1 **0 错**（5854 条类路径缺失属预期）；P2 **67/0**；P4 **4 条全一致**；**P7 已执行（9/0，b191 包实测）**；P3/P5 见 §4 记录。
 
 **CI 执行点（2026-11-20 新增）**：`.github/workflows/quality-gates.yml`（job `gates`，`push`/`pull_request` 触发）——`actions/setup-java@4` 装 Temurin 17 后跑 P1/P2/P4/P3，并把 App 仓 checkout 到 `.app` 经 `LX_APP_ROOT` 注入，让 `docs-audit` 的「App 锁定 sha」跨仓断言在云端也能真校验（原来只有本地跑）。此前 `platform-validation.yml` 只做三平台 build，四个门禁在 CI 里零执行点。
 
