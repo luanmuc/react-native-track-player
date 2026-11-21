@@ -36,8 +36,12 @@ jobs:
       - name: 音频焦点策略断言（67 条，javac + 场景 runner）
         run: node scripts/check_audio_focus_policy.js
 
+      # 续播撤销（RT-01/RT-04）的调用点契约：67 条纯策略断言不经过 MusicManager，
+      # 这条链路只能靠静态契约守——少一处调用，那条路径就退回原缺陷。
+      - name: 续播撤销调用点契约（9 处）
+        run: node scripts/check_resume_cancel_callsites.js
+
       # 变异测试：把策略里 4 条关键判据分别改坏，断言必须变红。单次约 9s，常跑。
-      # 证明「67 条全绿」不是摆设——这是 P6 红证从文档化改成自动化的执行点。
       - name: 变异测试（4 条变异体，任一存活即红）
         run: node scripts/mutation-test.js
 

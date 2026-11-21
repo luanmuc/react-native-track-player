@@ -80,7 +80,9 @@ npx tsc -p .                              # rc=0
 | M3 | `RECHECK_DENIED` 分支改成按欠账续播 | 长占用降级断言**变红** | 闹钟/长通话期间以低音量继续出声（G1） | **66 / 1** ✅ |
 | M4 | `resumePending = resumePending \|\| …` 改成直接赋值 | RT-02 累计断言**变红** | 第二次打断抹掉第一次播放意愿 | **65 / 2** ✅ |
 
-**旧版 M1~M3 已作废（2026-11-21 纠正）**：原表的三条变异点在 `MusicManager`（`dispatch()` 撤销续播、`resetFocus()` 恢复音量），而 67 条断言测的是 `AudioFocusPolicy` 纯逻辑类，不经过 `MusicManager`。实测：删掉 `dispatch()` 的 `cancelPendingResume()` → 门禁仍 **67/0**；删掉 `resetFocus()` 的 `setVolume` → 仍 **67/0**。这两条从来不是有效红证，只是文档写着「已验证」——属于「未执行留下的错」。真要覆盖 `MusicManager` 的行为，得另建一层带 Handler/Playback 桩的测试，不在纯策略门禁范围内，已记为 P3 遗留（见 §4 备注列）。
+**旧版 M1~M3 已作废（2026-11-21 纠正）**：原表的三条变异点在 `MusicManager`（`dispatch()` 撤销续播、`resetFocus()` 恢复音量），而 67 条断言测的是 `AudioFocusPolicy` 纯逻辑类，不经过 `MusicManager`。实测：删掉 `dispatch()` 的 `cancelPendingResume()` → 门禁仍 **67/0**；删掉 `resetFocus()` 的 `setVolume` → 仍 **67/0**。这两条从来不是有效红证，只是文档写着「已验证」——属于「未执行留下的错」。真要覆盖 `MusicManager` 的行为，得另建一层带 Handler/Playback 桩的测试，不在纯策略门禁范围内。
+
+**`MusicManager` 链路的静态契约（2026-11-21 补）**：`scripts/check_resume_cancel_callsites.js` 逐个方法体断言 9 处调用点齐全 —— `dispatch()`（USER_PAUSE/USER_PLAY 撤两条）、`switchPlayback()`、`resetFocus()`（撤两条）、`scheduleResume()` 自身、`scheduleRecheck()` 自身、`MusicModule.reset()`（撤续播 + `resetFocus`）、`MusicModule.stop()`。变异验证：删任一处即红。这**只证明「该调的调用点都在」**，不证明「调用后真的不执行」——后者需要 Handler 桩，仍为遗留项。
 
 **纪律**（已内置进脚本，不靠人记）：
 1. 每条变异必须「编译通过」但「断言变红」——编译失败说明变异体本身写错，不算抓住。
