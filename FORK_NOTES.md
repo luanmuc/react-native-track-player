@@ -109,6 +109,16 @@
 
 **覆盖范围（这轮之后对所有场景生效）**：外放、有线耳机、USB/Type-C 耳机、蓝牙 A2DP、LE Audio 耳机、蓝牙音箱，以及通话、微信语音、导航播报、闹钟、其他播放器接管、投屏切换。
 
+### 变异测试自动化与 CI 执行点（2026-11-21）
+
+**背景**：本仓的判据此前只在本地跑——CI 只做三平台 build，改坏 java 或删断言能绿着推上去；P6「红证」也只是 `STRESS_PLAN` 里的一行文档，从未自动化。
+
+- **新增 `scripts/mutation-test.js`**：把策略里 4 条关键判据分别改坏（二次压低守卫、复核 NORMAL 短路、长占用仍续播、欠账覆盖非累积），要求「编译通过但断言变红」；每条改完用原文覆写还原，收尾复跑基线必须回 **67/0**。任一变异存活即红——单次约 9s，接进 CI 常跑。
+- **作废旧 M1~M3（重要纠正）**：原表三条变异点在 `MusicManager`（`dispatch()` 撤销续播、`resetFocus()` 恢复音量），而 67 条断言测的是 `AudioFocusPolicy` 纯逻辑类，**根本不经过 `MusicManager`**。实测删掉 `dispatch()` 的 `cancelPendingResume()` → 仍 67/0；删掉 `resetFocus()` 的 `setVolume` → 仍 67/0。这两条从来不是有效红证，是文档写着「已验证」但从未真跑留下的。覆盖 `MusicManager` 行为需要 Handler/Playback 桩，已记为后续项。
+- **`check_audio_focus_policy.js` 改 `spawnSync`**：原来断言红时 java 非 0 退出会让 `execFileSync` 抛异常，输出只有笼统的「runner 执行失败」；现在能报「65 通过 / 2 失败」。runner 的用例抛异常也计一条失败并照常输出结果行，不再让整个门禁只说「崩了」。
+- **CI**：`.github/workflows/quality-gates.yml` 新建（`push`/`pull_request`，Temurin 17 + Node 22），step 依次音频焦点断言 / **变异测试** / Java 语法 / 口径门禁 / 文档巡检；文档巡检额外 checkout 公开的 App 仓到 `.app` 并经 `LX_APP_ROOT` 注入，让「App 锁定 sha」这条**跨仓断言在云端也真校验**。实跑 **53s** 全绿。
+- **`platform-validation.yml` 重整**：Node 12.18.3 在 darwin-arm64 无构建、`c-hive/gha-yarn-cache@v1` 的 cache API 常年 503、`actions/cache@v2` 被 GitHub 强制禁用 → push 只跑 `library-build`（yarn install + yarn build），三平台 example 构建改 `workflow_dispatch` 手动。
+
 ### 通知栏基础参数（`01f34b15`）
 
 - `quality` / `subSource` 在 track bundle 中被读取并注入通知栏，此前 Java 侧恒为 `null`
