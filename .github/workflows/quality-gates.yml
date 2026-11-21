@@ -36,6 +36,10 @@ jobs:
       - name: 音频焦点策略断言（67 条，javac + 场景 runner）
         run: node scripts/check_audio_focus_policy.js
 
+      # 代次簿记：撤销调用点齐全之后，还要保证「撤销真的能让到点任务失效」
+      - name: 代次簿记断言（24 条，PendingSlots）
+        run: node scripts/check_pending_slots.js
+
       # 续播撤销（RT-01/RT-04）的调用点契约：67 条纯策略断言不经过 MusicManager，
       # 这条链路只能靠静态契约守——少一处调用，那条路径就退回原缺陷。
       - name: 续播撤销调用点契约（9 处）
@@ -45,7 +49,7 @@ jobs:
       - name: 变异测试（4 条变异体，任一存活即红）
         run: node scripts/mutation-test.js
 
-      - name: Java 语法全量（18 文件 / 4,204 行）
+      - name: Java 语法全量（19 文件 / 4,526 行）
         run: node scripts/check-java-syntax.js
 
       - name: 口径门禁（G1 队列 ID / G2 裸数字 / G3 AGP / G4 postDelayed 常量）

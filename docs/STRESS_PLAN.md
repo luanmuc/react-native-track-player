@@ -10,7 +10,7 @@
 
 **目标**：在无 Android SDK / 无真机的环境里，把能压的部分压到极限并留证据：
 
-1. **Java 静态全量**：18 个 `.java` / 4,204 行逐文件 `javac` 语法检查
+1. **Java 静态全量**：19 个 `.java` / 4,526 行逐文件 `javac` 语法检查
 2. **焦点策略行为**：67 条场景断言（含短打断分级与通用性补修 30 条）+ 红-绿双向验证（换成修复前策略类必须变红）
 3. **TS 契约层**：4 文件 / 748 行 `tsc` 编译与 `lib/` 产物一致性
 4. **静态不变量**：队列 ID 单调、状态比较无裸数字、`postDelayed` 具名常量、AGP/SDK 自洽
@@ -31,7 +31,7 @@
 
 | # | 套件 | 命令 | 规模 | 通过标准 | 层级 |
 |---|---|---|---|---:|---|
-| P1 | Java 语法全量 | `node scripts/check-java-syntax.js` | 18 文件 / 4,204 行 | **0 条语法错误**；类路径缺失（无 SDK）按预期不判红 | L0 |
+| P1 | Java 语法全量 | `node scripts/check-java-syntax.js` | 19 文件 / 4,526 行 | **0 条语法错误**；类路径缺失（无 SDK）按预期不判红 | L0 |
 | P2 | 音频焦点策略行为 | `node scripts/check_audio_focus_policy.js` | **67 条**场景断言 | **67/0**；且换回修复前策略类必须 **≥2 红** | L2 |
 | P3 | TS 契约层编译 | `npx tsc -p .`（App 侧 typescript） | 4 文件 / 748 行 | rc=0，`lib/*.d.ts` 含 `quality` / `subSource` | L1 |
 | P4 | 静态不变量 | `node scripts/check_truth_gates.js` | 4 条（G1~G4） | 全一致 | L0 |
@@ -49,7 +49,7 @@
 
 ```bash
 # 1) 静态与语法（最快，先排除"根本编不过"）
-node scripts/check-java-syntax.js          # 18 文件 / 0 错
+node scripts/check-java-syntax.js          # 19 文件 / 0 错
 node scripts/check_truth_gates.js         # 4 条不变量
 node scripts/docs-audit.js --dry-run      # 文档镜像
 
@@ -82,7 +82,19 @@ npx tsc -p .                              # rc=0
 
 **旧版 M1~M3 已作废（2026-11-21 纠正）**：原表的三条变异点在 `MusicManager`（`dispatch()` 撤销续播、`resetFocus()` 恢复音量），而 67 条断言测的是 `AudioFocusPolicy` 纯逻辑类，不经过 `MusicManager`。实测：删掉 `dispatch()` 的 `cancelPendingResume()` → 门禁仍 **67/0**；删掉 `resetFocus()` 的 `setVolume` → 仍 **67/0**。这两条从来不是有效红证，只是文档写着「已验证」——属于「未执行留下的错」。真要覆盖 `MusicManager` 的行为，得另建一层带 Handler/Playback 桩的测试，不在纯策略门禁范围内。
 
-**`MusicManager` 链路的静态契约（2026-11-21 补）**：`scripts/check_resume_cancel_callsites.js` 逐个方法体断言 9 处调用点齐全 —— `dispatch()`（USER_PAUSE/USER_PLAY 撤两条）、`switchPlayback()`、`resetFocus()`（撤两条）、`scheduleResume()` 自身、`scheduleRecheck()` 自身、`MusicModule.reset()`（撤续播 + `resetFocus`）、`MusicModule.stop()`。变异验证：删任一处即红。这**只证明「该调的调用点都在」**，不证明「调用后真的不执行」——后者需要 Handler 桩，仍为遗留项。
+**`MusicManager` 链路的静态契约（2026-11-21 补）**：`scripts/check_resume_cancel_callsites.js` 逐个方法体断言 9 处调用点齐全 —— `dispatch()`（USER_PAUSE/USER_PLAY 撤两条）、`switchPlayback()`、`resetFocus()`（撤两条）、`scheduleResume()` 自身、`scheduleRecheck()` 自身、`MusicModule.reset()`（撤续播 + `resetFocus`）、`MusicModule.stop()`。变异验证：删任一处即红。这**只证明「该调的调用点都在」。**
+
+**「调用后真的不执行」由代次簿记保证（2026-11-21 收口）**：`Handler.removeCallbacks()` 对已经离开队列、开始执行的任务无效，所以光靠调用点撤销挡不住 500ms 窗口的竞态。新增纯逻辑类 `PendingSlots`（`service/focus/`，零 Android 依赖）做「当前有效代次」簿记：`armResume()` 返回新代次，任何更早的代次立即失效；任务到点第一句就是 `if (!pendingSlots.isResumeCurrent(token)) return;`；`cancelPendingResume()` 先 `disarmResume()` 再 `removeCallbacks`——即便 remove 拦不住，任务到点也会被挡回。`MusicManager` 的 `pendingResume` / `pendingRecheck` 都改成带 token，`scheduleRecheck` 同理。
+
+**P5 代次簿记断言**：`scripts/check_pending_slots.js`，**24 条**（初始无效 / 排一次有效 / 二次排队旧失效 / disarm 返回 token 且失效 / 重复 disarm 不复活 / 撤销后重排 / 两种任务互不干扰 / reset 全清 / 跨类型代次号不重复）。变异验证 3 条（`isResumeCurrent` 恒真 17/7、代次不递增 18/6、disarm 不清代次 20/4）全部被抓。至此 RT-01/RT-04 的两半（调用点齐全 + 撤销真的生效）都在 CI 里有执行点，**原记的「需要 Handler 桩」遗留项关闭**——用代次簿记替代了桩。
+
+**代次簿记的 3 条变异体（2026-11-21 追加，由同一支 `mutation-test.js` 驱动）**：
+
+| # | 变异 | 期望 | 实测 |
+|---|---|---|---|
+| M5 | `isResumeCurrent` 恒返 true | 撤销失效断言**变红** | **17 / 7** ✅ |
+| M6 | `armResume` 不递增（`++seq` → `seq`） | 新旧任务共用一个代次，撤旧连带废新 | **18 / 6** ✅ |
+| M7 | `disarmResume` 不清代次 | 撤销后旧任务仍被认为有效 | **20 / 4** ✅ |
 
 **纪律**（已内置进脚本，不靠人记）：
 1. 每条变异必须「编译通过」但「断言变红」——编译失败说明变异体本身写错，不算抓住。
@@ -95,7 +107,7 @@ npx tsc -p .                              # rc=0
 
 | 日期 | 基线 | P1 | P2 | P4 | 备注 |
 |---|---|---|---|---|---|
-| 2026-11-21 | `c07727e` + 变异测试 | 18 文件 / **0 错** | **67/0** | 4 条全一致 | P6 自动化：4 条变异体全部被抓（65/2、66/1、66/1、65/2），0 存活；旧 M1~M3 作废（变异点在 MusicManager，纯策略断言覆盖不到，实测仍 67/0）；`check_audio_focus_policy` 改 `spawnSync` 后红时能报「65 通过 / 2 失败」而不是笼统的 runner 崩 |
+| 2026-11-21 | `105a3de` + 代次簿记 | 19 文件 / **0 错** | **67/0** | 4 条全一致 | P6 自动化：4 条变异体全部被抓（65/2、66/1、66/1、65/2），0 存活；旧 M1~M3 作废（变异点在 MusicManager，纯策略断言覆盖不到，实测仍 67/0）；`check_audio_focus_policy` 改 `spawnSync` 后红时能报「65 通过 / 2 失败」而不是笼统的 runner 崩 |
 | 2026-11-20 | 短打断分级与兜底复核 | 18 文件 / **0 错** | **67/0** | 4 条全一致 | 新增 30 条：`LOSS_TRANSIENT` 非通话改压低、`FOCUS_RECHECK` 兜底、`RECHECK_DENIED` 长占用降级暂停、`BECOMING_NOISY` 按设备在位判定、二次打断不重复压低 |
 | 2026-11-20 | `3f8546d` | 18 文件 / **0 错** | **37/0** | 4 条全一致 | `check-java-syntax` 已带 `-sourcepath`，长期误报消失 |
 | 2026-11-19 | `3f8546d` | — | 37/0（红证 `12/2`） | — | RT-01~RT-05 收口当轮记录 |

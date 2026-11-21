@@ -24,6 +24,7 @@ import android.os.PowerManager.WakeLock;
 import android.util.Log;
 
 import com.guichaguri.trackplayer.service.focus.AudioFocusPolicy;
+import com.guichaguri.trackplayer.service.focus.PendingSlots;
 
 import androidx.media3.common.C;
 import androidx.media3.common.TrackSelectionParameters;
@@ -69,6 +70,12 @@ public class MusicManager {
     private Runnable pendingResume = null;
     /** 兜底复核任务句柄（对方不还焦点时到点主动重申请） */
     private Runnable pendingRecheck = null;
+    /**
+     * 待执行任务的代次簿记（纯逻辑类，可脱离 Android 单测）。
+     * `removeCallbacks` 对已开始执行的任务无效，光靠调用点撤销挡不住 500ms 窗口的竞态；
+     * 任务到点先问一次「我还是当前那一条吗」，撤销才能真正生效（RT-01/RT-04）。
+     */
+    private final PendingSlots pendingSlots = new PendingSlots();
     /** 兜底复核已重试次数，避免对方长期占用时无限自我打断 */
     private int recheckAttempts = 0;
     private static final int RECHECK_MAX_ATTEMPTS = 2;
@@ -243,8 +250,11 @@ public class MusicManager {
         Handler h = getHandler();
         if (h == null) return;
         cancelPendingResume();
+        final long token = pendingSlots.armResume();
         pendingResume = () -> {
             pendingResume = null;
+            if (!pendingSlots.isResumeCurrent(token)) return;
+            pendingSlots.disarmResume();
             if (playback != null && hasAudioFocus
                     && focusPolicy.getPhase() == AudioFocusPolicy.Phase.NORMAL
                     && playback.getState() == PlaybackStateCompat.STATE_PAUSED) playback.play();
@@ -257,6 +267,9 @@ public class MusicManager {
      * 否则 500ms 窗口内用户的意图会被到点的 play() 覆盖（RT-01）。
      */
     public void cancelPendingResume() {
+        // 先让代次失效再 removeCallbacks：即使任务已经开始执行、remove 拦不住，
+        // 它到点也会被 isResumeCurrent 挡回去
+        pendingSlots.disarmResume();
         if (pendingResume == null) return;
         Handler h = getHandler();
         if (h != null) h.removeCallbacks(pendingResume);
@@ -273,8 +286,11 @@ public class MusicManager {
         Handler h = getHandler();
         if (h == null) return;
         cancelPendingRecheck();
+        final long token = pendingSlots.armRecheck();
         pendingRecheck = () -> {
             pendingRecheck = null;
+            if (!pendingSlots.isRecheckCurrent(token)) return;
+            pendingSlots.disarmRecheck();
             if (playback == null || !handleAudioFocus) return;
             AudioFocusPolicy.Phase phase = focusPolicy.getPhase();
             if (phase == AudioFocusPolicy.Phase.NORMAL || phase == AudioFocusPolicy.Phase.LOST) return;
@@ -298,6 +314,7 @@ public class MusicManager {
 
     /** 撤销兜底复核：用户接管、GAIN 真的到了、销毁时都要调 */
     private void cancelPendingRecheck() {
+        pendingSlots.disarmRecheck();
         if (pendingRecheck == null) return;
         Handler h = getHandler();
         if (h != null) h.removeCallbacks(pendingRecheck);

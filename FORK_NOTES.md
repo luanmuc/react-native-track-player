@@ -119,6 +119,21 @@
 - **CI**：`.github/workflows/quality-gates.yml` 新建（`push`/`pull_request`，Temurin 17 + Node 22），step 依次音频焦点断言 / **变异测试** / Java 语法 / 口径门禁 / 文档巡检；文档巡检额外 checkout 公开的 App 仓到 `.app` 并经 `LX_APP_ROOT` 注入，让「App 锁定 sha」这条**跨仓断言在云端也真校验**。实跑 **53s** 全绿。
 - **`platform-validation.yml` 重整**：Node 12.18.3 在 darwin-arm64 无构建、`c-hive/gha-yarn-cache@v1` 的 cache API 常年 503、`actions/cache@v2` 被 GitHub 强制禁用 → push 只跑 `library-build`（yarn install + yarn build），三平台 example 构建改 `workflow_dispatch` 手动。
 
+### 续播撤销的代次簿记（2026-11-21）
+
+**问题**：RT-01/RT-04 修复时把 `postDelayed` 的句柄存了起来、在 9 处调用点撤销，但 `Handler.removeCallbacks()` **对已经离开队列、正在执行的任务无效**。用户暂停与到点 `play()` 之间只有 500ms，一旦任务已经开始执行，撤销就形同虚设——这条链路上「调用点齐全」只能防「忘了调」，防不住时序竞态。
+
+**做法**：新增纯逻辑类 `service/focus/PendingSlots.java`（零 Android 依赖，可在 JVM 上单测）：
+
+- `armResume()` / `armRecheck()` 返回**新代次号**，**任何更早的代次立即失效**（同种任务只保留最新一条）。
+- 任务到点第一句就是 `if (!pendingSlots.isResumeCurrent(token)) return;`——不再问 Handler，改问「我还是当前那一条吗」。
+- `cancelPendingResume()` / `cancelPendingRecheck()` **先 `disarm` 再 `removeCallbacks`**：即使 remove 拦不住已开始执行的任务，到点也会被挡回。
+- `disarmXxx()` 返回被废掉的 token（供 `removeCallbacks` 用）；`reset()` 在销毁/复位时清空两者。
+
+`MusicManager` 的 `pendingResume` / `pendingRecheck` 都改成「字段 + token」双轨；`scheduleResume` / `scheduleRecheck` 各自 `arm` 一次。
+
+**门禁**：`scripts/check_pending_slots.js`，**24 条**断言（初始无效 / 排一次有效 / 二次排队旧失效 / disarm 返回 token 且失效 / 重复 disarm 不复活 / 撤销后重排 / 两任务互不干扰 / reset 全清 / 跨类型代次号不重复）。`scripts/check_resume_cancel_callsites.js` 守 9 处调用点（静态契约）。两者都已进 `quality-gates.yml`；`mutation-test.js` 覆盖策略 4 条 + 代次 3 条共 **7 条变异体**，全部被抓。
+
 ### 通知栏基础参数（`01f34b15`）
 
 - `quality` / `subSource` 在 track bundle 中被读取并注入通知栏，此前 Java 侧恒为 `null`

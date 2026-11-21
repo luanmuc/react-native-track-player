@@ -12,7 +12,7 @@
 | 项 | 数值 | 说明 |
 |---|---|---|
 | TypeScript 源码 | 4 文件 / **748 行**（2026-11-20 实测；11-07 为 730 行） | App 直接 import 的契约层 |
-| Android Java | **18 文件 / 4,204 行**（2026-11-20 实测；11-07 为 17 文件 / 3,644 行，新增 `MusicManager` 焦点续播句柄等） | 全部定制落点 |
+| Android Java | **19 文件 / 4,526 行**（2026-11-21 实测；11-20 为 18 文件 / 4,204 行；11-07 为 17 文件 / 3,644 行。新增：`MusicManager` 焦点续播句柄、`PendingSlots` 代次簿记） | 全部定制落点 |
 | iOS Swift | 9 文件 / 1,125 行 | App 不发布 iOS，仅做静态影响评估 |
 | 图标资源 | **20 张**（4 状态 × 5 密度，`docs-audit` 实测 `find … -name 'notify_mode_*.png'` = 20；另有 `drawable-nodpi/default_artwork.png` 属上游） | 模式按钮专用 |
 | 构建产物 | `lib/`（不入库，`prepare` 时生成） | 影响 App 侧 tsc 结果 |
@@ -270,6 +270,8 @@ grep -rh -A1 "@ReactMethod" android/src/main/java --include=*.java | grep -oE "p
 | 项 | 变化 | 实跑（2026-11-20） |
 |---|---|---|
 | `scripts/check_audio_focus_policy.js` | 断言 28 → 37 → 58 → **67 条**（2026-11-20 加短打断分级、兜底复核与通用性补修） | **67 通过 / 0 失败** |
+| `scripts/check_pending_slots.js` | **24 条**（2026-11-21 新增，代次簿记：撤销真的能让到点任务失效） | **24 通过 / 0 失败** |
+| `scripts/check_resume_cancel_callsites.js` | **9 处**调用点静态契约（2026-11-21 新增，MusicManager 链路的唯一可守形式） | **9 处齐全** |
 | `scripts/check-java-syntax.js` | 补 `-sourcepath <java 源码根>`，修「同包引用解析不到 → 级联出误导性 illegal parenthesized expression」的长期误报（`MusicManager.execute()` 的 `switch (action.type)` 曾被长期判红）；注入缺分号变异仍被抓 | **0 条语法错误**；5854 条类路径缺失（无 Android SDK）按预期不判红 |
 | `scripts/check_truth_gates.js` | G1 队列 ID 单调（1 处 `AtomicLong`）/ G2 状态比较无裸数字 / G3 AGP 8.6.1 自洽 / G4 `postDelayed` 均具名常量 | **4 条全一致** |
 
