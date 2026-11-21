@@ -14,7 +14,7 @@
 const fs = require('fs')
 const path = require('path')
 const os = require('os')
-const { execFileSync } = require('child_process')
+const { execFileSync, spawnSync } = require('child_process')
 
 const root = path.resolve(__dirname, '..')
 const POLICY = path.join(root, 'android/src/main/java/com/guichaguri/trackplayer/service/focus/AudioFocusPolicy.java')
@@ -48,18 +48,16 @@ if (!red.length) {
   }
 
   if (!red.length) {
-    try {
-      const stdout = execFileSync('java', ['-cp', outDir, 'AudioFocusPolicyTest'], { stdio: 'pipe' }).toString()
-      const lines = stdout.split('\n').filter(Boolean)
-      for (const line of lines) console.log(line)
-      const m = stdout.match(/结果：(\d+) 通过 \/ (\d+) 失败/)
-      if (!m) bad('runner 未输出结果行（判据失效）')
-      else if (Number(m[2]) !== 0) bad(`场景断言 ${m[1]} 通过 / ${m[2]} 失败`)
-      else if (Number(m[1]) < 25) bad(`用例数仅 ${m[1]}，低于约定的 25（有断言被删除）`)
-      else ok(`场景断言 ${m[1]} 通过 / 0 失败`)
-    } catch (e) {
-      bad('runner 执行失败：' + String(e.stderr || e.message).slice(0, 400))
-    }
+    // 用 spawnSync 而不是 execFileSync：断言红时 java 会以非 0 退出，execFileSync 抛异常会把
+    // "40 通过 / 1 失败" 变成笼统的"runner 执行失败"，CI 上定位不到断在哪。
+    const r = spawnSync('java', ['-cp', outDir, 'AudioFocusPolicyTest'], { encoding: 'utf8' })
+    const stdout = r.stdout || ''
+    for (const line of stdout.split('\n').filter(Boolean)) console.log(line)
+    const m = stdout.match(/结果：(\d+) 通过 \/ (\d+) 失败/)
+    if (!m) bad('runner 未输出结果行（判据失效）：' + String(r.stderr || '').slice(0, 400))
+    else if (Number(m[2]) !== 0) bad(`场景断言 ${m[1]} 通过 / ${m[2]} 失败`)
+    else if (Number(m[1]) < 25) bad(`用例数仅 ${m[1]}，低于约定的 25（有断言被删除）`)
+    else ok(`场景断言 ${m[1]} 通过 / 0 失败`)
   }
 
   try { fs.rmSync(outDir, { recursive: true, force: true }) } catch (e) { /* 临时目录清理失败不影响结论 */ }

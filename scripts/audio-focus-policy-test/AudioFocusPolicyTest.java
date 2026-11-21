@@ -28,6 +28,7 @@ public final class AudioFocusPolicyTest {
 
   public static void main(String[] args) {
     System.out.println("AudioFocusPolicy 场景断言");
+    try {
 
     // 1. 主路径：播放中来电 → 挂断应续播
     AudioFocusPolicy p = new AudioFocusPolicy();
@@ -291,6 +292,12 @@ public final class AudioFocusPolicyTest {
     a = p.handle(Event.FOCUS_RECHECK, PAUSED);
     expect("长占用：用户暂停过则不复活", !has(a, AudioFocusPolicy.A_SCHEDULE_RESUME));
 
+    } catch (Throwable t) {
+      // 用例抛异常（空动作序列上取值、策略返回 null 等）也必须计入一条失败并继续给出结果行，
+      // 否则 CI 只能说"runner 崩了"，定位不到是哪一条断言失效。
+      fail++;
+      System.out.println("  ❌ 用例异常中断：" + t);
+    }
     System.out.println("\n结果：" + pass + " 通过 / " + fail + " 失败");
     if (fail > 0) System.exit(1);
   }

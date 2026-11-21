@@ -39,7 +39,7 @@
 | P6 | 变异注入（红证） | 手工 3 处注入后跑 P2 | 3 个变异体 | **3/3 被抓**（详见 §3） | L2 |
 | P7 | 集成落地 | App CI 构建后跑 `scripts/verify_apk_integration.js`（解包 APK 读 `resources.arsc` 与 `classes*.dex` 字符串池） | 每次构建 | **9 条全绿**（b191 实测）：`notify_mode_loop/order/random/single` 四个资源名 + `setNotificationRepeatMode` + `setPitch` + `resources.arsc`/`classes.dex` 存在性 | L3 → **已执行** |
 
-**当前实测（2026-11-20）**：P1 **0 错**（5854 条类路径缺失属预期）；P2 **67/0**；P4 **4 条全一致**；**P7 已执行（9/0，b191 包实测）**；P3/P5 见 §4 记录。
+**当前实测（2026-11-21）**：变异测试 **4/4 被抓、0 存活**（已进 CI）；P1 **0 错**（5854 条类路径缺失属预期）；P2 **67/0**；P4 **4 条全一致**；**P7 已执行（9/0，b191 包实测）**；P3/P5 见 §4 记录。
 
 **CI 执行点（2026-11-20 新增）**：`.github/workflows/quality-gates.yml`（job `gates`，`push`/`pull_request` 触发）——`actions/setup-java@4` 装 Temurin 17 后跑 P1/P2/P4/P3，并把 App 仓 checkout 到 `.app` 经 `LX_APP_ROOT` 注入，让 `docs-audit` 的「App 锁定 sha」跨仓断言在云端也能真校验（原来只有本地跑）。此前 `platform-validation.yml` 只做三平台 build，四个门禁在 CI 里零执行点。
 
@@ -71,20 +71,29 @@ npx tsc -p .                              # rc=0
 
 ## 3. 变异体设计（P6 红证，证明断言不是摆设）
 
-| # | 变异 | 期望 | 依据 |
-|---|---|---|---|
-| M1 | 删掉 `MusicManager.cancelPendingResume()` 的调用（`dispatch()` 的 `USER_PAUSE` 分支） | RT-01/RT-04 断言**变红** | 续播窗口可撤销是本次修复的核心 |
-| M2 | 把 `LOSS_TRANSIENT` 的 `userPaused` 改回无条件 `false` | RT-02 核心 2 条**变红**（实测修复前 `12 passed / 2 failed`） | 已验证过的红-绿路径 |
-| M3 | `resetFocus()` 去掉 `setVolume(getVolumeBeforeDuck())` | RT-05 的 `volumeBeforeDuck` / 恢复动作断言**变红** | DUCKED 期间 reset 音量卡 25% 的原缺陷 |
+**2026-11-21 起由 `scripts/mutation-test.js` 自动化执行，并接进 `quality-gates.yml` 常跑（单次约 9s）。**
 
-**纪律**：每个变异跑完必须 `git checkout -- <file>` 还原，并复跑 P2 确认回到 **67/0**；还原后不复跑等于没做。
+| # | 变异 | 期望 | 依据 | 实测（2026-11-21） |
+|---|---|---|---|---|
+| M1 | 短打断分支 `if (!ducked)` 守卫改成恒真 | 二次压低断言**变红** | 连续两次 TRANSIENT 叠乘 `DUCK_RATIO`，音量掉到 6.25%（G3） | **65 / 2** ✅ |
+| M2 | `FOCUS_RECHECK` 在 `phase==NORMAL` 直接 break | 复核收尾断言**变红** | USER_PLAY 清 phase 后音量永久卡 25%（G2） | **66 / 1** ✅ |
+| M3 | `RECHECK_DENIED` 分支改成按欠账续播 | 长占用降级断言**变红** | 闹钟/长通话期间以低音量继续出声（G1） | **66 / 1** ✅ |
+| M4 | `resumePending = resumePending \|\| …` 改成直接赋值 | RT-02 累计断言**变红** | 第二次打断抹掉第一次播放意愿 | **65 / 2** ✅ |
 
----
+**旧版 M1~M3 已作废（2026-11-21 纠正）**：原表的三条变异点在 `MusicManager`（`dispatch()` 撤销续播、`resetFocus()` 恢复音量），而 67 条断言测的是 `AudioFocusPolicy` 纯逻辑类，不经过 `MusicManager`。实测：删掉 `dispatch()` 的 `cancelPendingResume()` → 门禁仍 **67/0**；删掉 `resetFocus()` 的 `setVolume` → 仍 **67/0**。这两条从来不是有效红证，只是文档写着「已验证」——属于「未执行留下的错」。真要覆盖 `MusicManager` 的行为，得另建一层带 Handler/Playback 桩的测试，不在纯策略门禁范围内，已记为 P3 遗留（见 §4 备注列）。
+
+**纪律**（已内置进脚本，不靠人记）：
+1. 每条变异必须「编译通过」但「断言变红」——编译失败说明变异体本身写错，不算抓住。
+2. 任何一条变异「改完仍然全绿」即判红：说明该缺陷没有任何断言覆盖。
+3. 还原用原文覆写（不是 `git checkout`，避免误伤工作区里未提交的改动），收尾必须复跑基线回到 **67/0**。
+
+**历史红证**：M4 所对应的 RT-02，修复前实测 `12 passed / 2 failed`（37 条时代的记录），修复后 37/0。
 
 ## 4. 实测记录
 
 | 日期 | 基线 | P1 | P2 | P4 | 备注 |
 |---|---|---|---|---|---|
+| 2026-11-21 | `c07727e` + 变异测试 | 18 文件 / **0 错** | **67/0** | 4 条全一致 | P6 自动化：4 条变异体全部被抓（65/2、66/1、66/1、65/2），0 存活；旧 M1~M3 作废（变异点在 MusicManager，纯策略断言覆盖不到，实测仍 67/0）；`check_audio_focus_policy` 改 `spawnSync` 后红时能报「65 通过 / 2 失败」而不是笼统的 runner 崩 |
 | 2026-11-20 | 短打断分级与兜底复核 | 18 文件 / **0 错** | **67/0** | 4 条全一致 | 新增 30 条：`LOSS_TRANSIENT` 非通话改压低、`FOCUS_RECHECK` 兜底、`RECHECK_DENIED` 长占用降级暂停、`BECOMING_NOISY` 按设备在位判定、二次打断不重复压低 |
 | 2026-11-20 | `3f8546d` | 18 文件 / **0 错** | **37/0** | 4 条全一致 | `check-java-syntax` 已带 `-sourcepath`，长期误报消失 |
 | 2026-11-19 | `3f8546d` | — | 37/0（红证 `12/2`） | — | RT-01~RT-05 收口当轮记录 |

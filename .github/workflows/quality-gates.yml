@@ -36,6 +36,11 @@ jobs:
       - name: 音频焦点策略断言（67 条，javac + 场景 runner）
         run: node scripts/check_audio_focus_policy.js
 
+      # 变异测试：把策略里 4 条关键判据分别改坏，断言必须变红。单次约 9s，常跑。
+      # 证明「67 条全绿」不是摆设——这是 P6 红证从文档化改成自动化的执行点。
+      - name: 变异测试（4 条变异体，任一存活即红）
+        run: node scripts/mutation-test.js
+
       - name: Java 语法全量（18 文件 / 4,204 行）
         run: node scripts/check-java-syntax.js
 
