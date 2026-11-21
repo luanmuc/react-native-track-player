@@ -41,6 +41,8 @@
 
 **当前实测（2026-11-20）**：P1 **0 错**（5854 条类路径缺失属预期）；P2 **67/0**；P4 **4 条全一致**；P3/P5/P7 见 §4 记录。
 
+**CI 执行点（2026-11-20 新增）**：`.github/workflows/quality-gates.yml`（job `gates`，`push`/`pull_request` 触发）——`actions/setup-java@4` 装 Temurin 17 后跑 P1/P2/P4/P3，并把 App 仓 checkout 到 `.app` 经 `LX_APP_ROOT` 注入，让 `docs-audit` 的「App 锁定 sha」跨仓断言在云端也能真校验（原来只有本地跑）。此前 `platform-validation.yml` 只做三平台 build，四个门禁在 CI 里零执行点。
+
 ---
 
 ## 2. 执行顺序（按依赖）
